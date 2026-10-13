@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import {
   addDays, backupDue, byDay, delBooking, diffDays, events, expenseDays, hero, isRealDay, money, newLog, putBooking, putExpense, putItem, putMoney,
-  putTrip, spend, summary, todayView, addAttachment, validTripDates, type Log,
+  putTrip, spend, summary, groupBookings, nights, todayView, addAttachment, validTripDates, type Log,
 } from '../src/model.ts';
 import { buildIcs, fold, planHtml, planText } from '../src/ics.ts';
-import { diffBooking, parsePaste } from '../src/parse.ts';
+import { classify, diffBooking, parsePaste } from '../src/parse.ts';
 import { csvCell, parseBackup, pushSnapshot, serialize, toBackupJSON, toCSV } from '../src/backup.ts';
 import { decryptEnvelope, deriveKey, encryptWithKey, isEnvelope, newSalt } from '../src/crypto.ts';
 import { checkPin, makePin } from '../src/pin.ts';
@@ -121,6 +121,32 @@ test('reading a file proposes only what is new, and keeps a title or type the pe
   const ch = diffBooking(saved, p, false);
   assert.deepEqual(ch.map((c) => [c.field, c.from, c.to]), [['start', '2026-10-24T14:00', '2026-10-24T15:00']], 'only the changed time; title and type untouched');
   assert.deepEqual(diffBooking({ ...saved, start: '2026-10-24T15:00' }, p, false), []);
+});
+
+test('the kind of booking is told apart from what the document says', () => {
+  const doc = (...lines: string[]) => lines.join('\n');
+  assert.equal(classify(doc('IndiGo e-ticket', 'PNR: QW84ZX', 'Departure (BOM)', 'Arrival (MAD)', 'Gate 14', 'Seat 12A')), 'flight');
+  assert.equal(classify(doc('Hotel Arts Barcelona', 'Check-in: 24 Oct 2026', 'Check-out: 27 Oct 2026', '3 nights, 2 guests')), 'hotel');
+  assert.equal(classify(doc('Your reservation is confirmed', 'Hosted by Maria', 'Airbnb', 'Entire apartment', 'Check-in 24 Oct')), 'airbnb');
+  assert.equal(classify(doc('Hertz car rental', 'Pick-up: Madrid Airport', 'Drop-off: Barcelona', 'Fuel policy: full to full')), 'car');
+  assert.equal(classify(doc('Renfe train ticket', 'Madrid Atocha to Barcelona Sants', 'Platform 7', 'Coach 4')), 'train');
+  assert.equal(classify(doc('Sagrada Familia guided tour', 'Admission: 2 adults', 'Voucher code ABC123')), 'activity');
+  assert.equal(classify(doc('Travel insurance certificate', 'Policy number: TG-8841', 'Insured: A Shah', 'Coverage: medical')), 'insurance');
+  assert.equal(classify(doc('Electronic visa', 'Passport number', 'Entry permit valid 90 days')), 'insurance');
+  assert.equal(classify('Thanks for your order. See you soon.'), 'other');
+  // a flight email that also mentions a hotel offer is still a flight
+  assert.equal(classify(doc('PNR: ZZ99QQ', 'Flight AI 123', 'Boarding pass', 'Add a hotel to your trip')), 'flight');
+});
+
+test('the Bookings tab sorts into sections, with nights for a stay', () => {
+  let l = sample();
+  l = putBooking(l, { id: 'b3', type: 'airbnb', title: 'Gràcia flat', ref: '', start: '2026-10-27T15:00', end: '2026-10-30T10:00', place: '', notes: '' });
+  l = putBooking(l, { id: 'b4', type: 'insurance', title: 'Travel cover', ref: 'TG-8841', start: '', end: '', place: '', notes: '' });
+  const g = groupBookings(l);
+  assert.deepEqual(g.map((x) => [x.id, x.bookings.map((b) => b.id)]), [['flights', ['b2']], ['stays', ['b1', 'b3']], ['insurance', ['b4']]]);
+  assert.equal(nights(l.bookings.find((b) => b.id === 'b1')!), 3);
+  assert.equal(nights(l.bookings.find((b) => b.id === 'b2')!), null, 'a flight has no nights');
+  assert.deepEqual(groupBookings(newLog(0)), []);
 });
 
 test('calendar file: CRLF, flight reminders, tomorrow previews, escaping and folding', () => {

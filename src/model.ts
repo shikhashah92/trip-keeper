@@ -257,3 +257,29 @@ export const summary = (l: Pick<Log, 'bookings' | 'items' | 'expenses'>) =>
 
 /** A new activity starts on the first day of the trip if it is still ahead, otherwise today. */
 export const defaultDay = (t: Trip, day: string) => (t.start && t.start > day ? t.start : day);
+
+/** How the Bookings tab sorts bookings into sections, in this order. */
+export const BOOKING_GROUPS: { id: string; label: string; icon: string; types: BookingType[] }[] = [
+  { id: 'flights', label: 'Flights', icon: 'airplane', types: ['flight'] },
+  { id: 'stays', label: 'Stays', icon: 'bed', types: ['hotel', 'airbnb'] },
+  { id: 'transport', label: 'Cars and trains', icon: 'car', types: ['car', 'train'] },
+  { id: 'activities', label: 'Activities and tickets', icon: 'ticket', types: ['activity'] },
+  { id: 'insurance', label: 'Insurance and visas', icon: 'shield-checkmark', types: ['insurance'] },
+  { id: 'other', label: 'Other documents', icon: 'document-text', types: ['other'] },
+];
+
+/** The sections that have something in them, each with its bookings in date order (undated last). */
+export function groupBookings(l: Log) {
+  const all = sortedBookings(l);
+  return BOOKING_GROUPS
+    .map((g) => ({ ...g, bookings: all.filter((b) => g.types.includes(b.type)) }))
+    .filter((g) => g.bookings.length);
+}
+
+/** Nights of a stay, from its check-in and check-out days; null when it has no dates or is not a stay. */
+export function nights(b: Booking): number | null {
+  if (b.type !== 'hotel' && b.type !== 'airbnb') return null;
+  if (!b.start || !b.end) return null;
+  const n = diffDays(splitStamp(b.start)[0], splitStamp(b.end)[0]);
+  return n > 0 ? n : null;
+}

@@ -9,15 +9,39 @@ const MONTH: Record<string, number> = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, 
 const MM = 'jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec';
 const pad = (n: number | string) => String(n).padStart(2, '0');
 
+// What each kind of booking says about itself, with a weight for how telling it is. A document is the kind with the
+// most evidence, so a flight email that mentions a hotel offer is still a flight. Case-insensitive; airport codes in
+// brackets, like (BOM), are matched on the original text.
+const SIGNALS: Record<Exclude<BookingType, 'other'>, [RegExp, number][]> = {
+  flight: [[/\bpnr\b/, 4], [/boarding pass/, 4], [/\bflights?\b/, 2], [/\bair(lines?|ways)\b|\bindigo\b|\bvistara\b|\bemirates\b|\bqatar\b/, 2],
+    [/e-?ticket/, 2], [/\bgate\b/, 1], [/\bterminal\b/, 1], [/\bdepart(s|ure)?\b/, 1], [/\bseat\b/, 1], [/\bbaggage\b|\bcabin\b/, 1]],
+  hotel: [[/\bhotel\b/, 3], [/check-?in/, 2], [/check-?out/, 2], [/\bresort\b/, 2], [/\brooms?\b/, 1], [/\bnights?\b/, 2], [/\bguests?\b/, 1],
+    [/booking\.com|agoda|expedia|hotels\.com|\boyo\b/, 2], [/\bstay\b/, 1], [/\breception\b/, 1]],
+  airbnb: [[/airbnb/, 6], [/\bhost\b/, 1], [/\bentire (home|place|apartment|villa)\b/, 3]],
+  car: [[/car rental|rental car|car hire/, 5], [/hertz|avis|europcar|sixt|enterprise|zoomcar|drivezy/, 4], [/drop-?off/, 2], [/pick-?up/, 2], [/\bmileage\b|fuel policy|\bdeposit\b/, 2]],
+  train: [[/\btrain\b/, 3], [/renfe|irctc|eurostar|amtrak|sncf|trenitalia|deutsche bahn|redbus/, 4], [/\brail\b/, 2], [/\bplatform\b/, 2], [/\bbus\b/, 2], [/\bcoach\b/, 1]],
+  activity: [[/admission|\bentry\b/, 2], [/\btickets?\b/, 1], [/\btour\b|excursion|museum|guided|sightseeing/, 3], [/\bvoucher\b/, 1],
+    [/viator|getyourguide|klook|tripadvisor/, 4], [/\bshow\b|concert|\bevent\b|\bperformance\b/, 1]],
+  insurance: [[/insurance|\binsured\b|policy (number|no)|\bpremium\b|\bcoverage\b|assistance/, 4], [/\bvisa\b|e-?visa|\beta\b|passport|entry permit|immigration/, 3]],
+};
+const AIRPORT = /\([A-Z]{3}\)/g;
+
+/** The kind of booking a text describes, or 'other' when nothing in it is telling enough. */
+export function classify(text: string): BookingType {
+  const low = text.toLowerCase();
+  let best: BookingType = 'other';
+  let top = 1.5; // below this there is too little to go on
+  for (const [kind, signals] of Object.entries(SIGNALS) as [Exclude<BookingType, 'other'>, [RegExp, number][]][]) {
+    let score = signals.reduce((n, [rx, w]) => n + (rx.test(low) ? w : 0), 0);
+    if (kind === 'flight') score += Math.min(2, (text.match(AIRPORT) ?? []).length); // (BOM) ... (MAD)
+    if (score > top) { top = score; best = kind; }
+  }
+  return best;
+}
+
 export function parsePaste(text: string): Parsed {
   const t = text.replace(/\r/g, '');
-  const low = t.toLowerCase();
-  const type: BookingType = /airbnb/.test(low) ? 'airbnb'
-    : /(\bpnr\b|boarding pass|airline|\bflight\b|e-?ticket)/.test(low) ? 'flight'
-    : /(car rental|rental car|hertz|avis|europcar|sixt|drop-?off)/.test(low) ? 'car'
-    : /(\btrain\b|renfe|\brail\b|\bbus\b)/.test(low) ? 'train'
-    : /(check-?in|hotel|resort|booking\.com|\bstay\b)/.test(low) ? 'hotel'
-    : /(admission|\btour\b|\bentry\b|\bticket)/.test(low) ? 'activity' : 'other';
+  const type = classify(t);
   const out: Parsed = { type, title: '' };
 
   // A reference has a digit, or is all capitals (so "booking confirmed" is not a reference).
