@@ -17,6 +17,7 @@ undo history (the last 10 versions), and a service worker for offline use.
 - **Itinerary:** your own activities plus every dated booking, grouped by day. Mark it Final when planning is done.
 - **Bookings and documents:** flights, hotels, Airbnbs, car rentals, trains, tickets and visas with confirmation numbers and attached files.
 - **Add from a PDF or screenshot:** pick a ticket or confirmation and the booking is filled in for you to check. PDFs are read from their text; screenshots and photos by OCR. All on the phone.
+- **Several flights on one ticket:** a connection or a return becomes one booking per flight, with airline, flight number, airports and terminals, passengers, seat, class and baggage in the notes.
 - **Update from a new file:** attach a changed ticket to a booking and see what differs before anything is updated.
 - **Paste a confirmation:** paste an email or booking page text and the form is filled in for you to review.
 - **Expenses:** multi-currency, optional budget, totals by category, CSV export.

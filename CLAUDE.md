@@ -32,6 +32,7 @@ src/backup.ts         parseBackup (validates untrusted/own data), serialize, CSV
 src/crypto.ts         Passphrase encryption for backups (copied from Uplift)
 src/ics.ts            Calendar file, share text, print page
 src/parse.ts          Paste-a-confirmation heuristics + diffBooking (what a file would change)
+src/flights.ts        Splits a ticket into one booking per flight; airline and airport tables; passenger, seat, terminal details
 src/reader.ts         Reads a PDF (text layer) or image (OCR) on the phone, from self-hosted files
 src/handoff.ts        Passes picked files from the Bookings tab to the booking form
 scripts/vendor.mjs    Copies pdf.js and Tesseract into public/vendor (generated, not committed)
@@ -64,6 +65,7 @@ tests/core.test.ts    Unit tests for the pure modules
 - Dates are local `YYYY-MM-DD`; times `HH:MM`; booking start/end `YYYY-MM-DDTHH:MM`. Use `today()`, `addDays()`, `diffDays()`.
 - Money: each expense stores amount + currency. `trip.home` is the home currency (default INR); `trip.rates[CUR]` is one global rate per currency. Expenses with no rate are left out of totals and flagged.
 - The PIN is a screen lock, not encryption. Do not describe it as encryption. It lives outside the log (`pin:v1`) so restoring a backup does not change it.
+- Flights: `parseDocument()` (flights.ts) returns one booking per flight number found, each span of text parsed by `parsePaste`. A flight number counts only if its airline code is in `AIRLINES`; an airport code in brackets counts unless it is in `NOT_AIRPORT` (PNR, currencies, taxes). Details go in the booking notes as `Label: value` lines and are only ever added below what the person wrote.
 - Booking kinds: `classify()` in `parse.ts` scores each kind by weighted signals (add a signal there, with a test, when a real document is mistaken). `BOOKING_GROUPS` in `model.ts` is how the Bookings tab sections them.
 - Reading files: `reader.ts` loads pdf.js and Tesseract as classic scripts from `public/vendor` (never a CDN, never the bundler). Nothing about a file leaves the phone. A read only ever fills the form after the person confirms (`diffBooking` lists what changes); a time that wasn't found is set to noon and flagged. OCR data is fetched on first use and then cached by the service worker.
 - Share text and the print page must not include booking reference numbers.

@@ -7,6 +7,7 @@ import {
 } from '../src/model.ts';
 import { buildIcs, fold, planHtml, planText } from '../src/ics.ts';
 import { classify, diffBooking, parsePaste } from '../src/parse.ts';
+import { parseDocument } from '../src/flights.ts';
 import { csvCell, parseBackup, pushSnapshot, serialize, toBackupJSON, toCSV } from '../src/backup.ts';
 import { decryptEnvelope, deriveKey, encryptWithKey, isEnvelope, newSalt } from '../src/crypto.ts';
 import { checkPin, makePin } from '../src/pin.ts';
@@ -189,6 +190,62 @@ test('activity times: a range, "10 AM", a duration, and doors-open is not the st
   assert.equal(dur.start, '2026-10-25T14:00');
   assert.equal(dur.end, '2026-10-25T16:00');
   assert.equal(parsePaste(doc('City tour', 'from 9 AM to 12 PM', '25 Oct 2026')).start, '2026-10-25T09:00');
+});
+
+test('a ticket with several flights becomes one booking per flight, with the details a traveller needs', () => {
+  const doc = (...lines: string[]) => lines.join('\n');
+  const ticket = doc('IndiGo', 'Booking Reference (PNR): QW84ZX', 'Booked on: 01 Oct 2026', 'Passenger: MR RAHUL SHARMA',
+    'Flight 6E 521', 'Mumbai (BOM) Terminal 2 → Delhi (DEL) Terminal 3', 'Departure: Sat, 07 Nov 2026 06:15', 'Arrival: Sat, 07 Nov 2026 08:35', 'Seat: 12A',
+    'Flight 6E 2104', 'Delhi (DEL) → Leh (IXL)', 'Departure: Sat, 07 Nov 2026 11:05', 'Arrival: Sat, 07 Nov 2026 12:35', 'Seat: 14C', 'Check-in baggage: 15 kg');
+  const found = parseDocument(ticket);
+  assert.equal(found.length, 2);
+  const [a, b] = found;
+  assert.equal(a.title, '6E 521 BOM → DEL');
+  assert.equal(a.ref, 'QW84ZX');
+  assert.equal(a.start, '2026-11-07T06:15');
+  assert.equal(a.end, '2026-11-07T08:35');
+  assert.equal(a.place, 'Mumbai (BOM) Terminal 2');
+  assert.ok(a.notes?.includes('Airline: IndiGo') && a.notes.includes('Flight: 6E 521') && a.notes.includes('Seat: 12A'));
+  assert.ok(a.notes?.includes('To: Delhi (DEL), Terminal 3'));
+  assert.ok(a.notes?.includes('Passenger: MR RAHUL SHARMA'));
+  assert.equal(b.title, '6E 2104 DEL → IXL');
+  assert.equal(b.start, '2026-11-07T11:05');
+  assert.equal(b.end, '2026-11-07T12:35');
+  assert.ok(b.notes?.includes('Seat: 14C'));
+  assert.ok(b.notes?.includes('To: Leh (IXL)'));
+});
+
+test('flight table rows: one per line, with the next-day arrival marked +1', () => {
+  const doc = (...lines: string[]) => lines.join('\n');
+  const found = parseDocument(doc('AIR INDIA E-TICKET', 'PNR: ZK7LM2', 'Sector | Flight | Date | Dep | Arr',
+    'BOM - LHR | AI 131 | 07 Nov 2026 | 02:40 | 07:25', 'LHR - BOM | AI 130 | 21 Nov 2026 | 21:35 | 10:15 +1'));
+  assert.equal(found.length, 2);
+  assert.deepEqual(found.map((f) => [f.title, f.start, f.end]), [
+    ['AI 131 BOM → LHR', '2026-11-07T02:40', '2026-11-07T07:25'],
+    ['AI 130 LHR → BOM', '2026-11-21T21:35', '2026-11-22T10:15'],
+  ]);
+  assert.ok(found.every((f) => f.ref === 'ZK7LM2' && f.notes?.includes('Airline: Air India')));
+  assert.ok(found[0].notes?.includes('From: Mumbai (BOM)') && found[0].notes.includes('To: London (Heathrow) (LHR)'));
+});
+
+test('a single flight still comes back as one booking, and years in the text are not flight numbers', () => {
+  const found = parseDocument(['Qatar Airways e-ticket', 'Booking reference: 7HG2KD', 'QR 571 Mumbai (BOM) to Doha (DOH)', 'Departure 07 Nov 2026 03:05', 'Arrival 07 Nov 2026 04:55', 'Valid until 2026', 'Class: Economy'].join('\n'));
+  assert.equal(found.length, 1);
+  assert.equal(found[0].title, 'QR 571 BOM → DOH');
+  assert.equal(found[0].start, '2026-11-07T03:05');
+  assert.equal(found[0].end, '2026-11-07T04:55');
+  assert.ok(found[0].notes?.includes('Class: Economy'));
+  // not a flight at all: unchanged
+  assert.equal(parseDocument('Hotel Arts\nCheck-in: 24 Oct 2026 3:00 PM\nCheck-out: 27 Oct 2026 11:00').length, 1);
+});
+
+test('notes from a file are added below what is there, never over it', () => {
+  const p = { type: 'flight' as const, title: 'AI 131 BOM → LHR', notes: 'Airline: Air India\nFlight: AI 131' };
+  const empty = { type: 'flight' as const, title: '', ref: '', start: '', end: '', place: '', notes: '' };
+  assert.equal(diffBooking(empty, p, true).find((c) => c.field === 'notes')?.to, 'Airline: Air India\nFlight: AI 131');
+  const mine = diffBooking({ ...empty, notes: 'Aisle seat please' }, p, false).find((c) => c.field === 'notes')?.to;
+  assert.equal(mine, 'Aisle seat please\n\nAirline: Air India\nFlight: AI 131');
+  assert.equal(diffBooking({ ...empty, notes: 'Airline: Air India\nFlight: AI 131' }, p, false).find((c) => c.field === 'notes'), undefined, 'already there');
 });
 
 test('calendar file: CRLF, flight reminders, tomorrow previews, escaping and folding', () => {

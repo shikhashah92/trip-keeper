@@ -4,19 +4,22 @@ import { router, useLocalSearchParams } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useLog, useTheme } from '../store';
 import { BOOKING_TYPE, BOOKING_TYPES, delAttachment, delBooking, filesOf, newId, putBooking, type BookingType } from '../model';
-import { diffBooking, parsePaste, type Change, type Current, type Parsed } from '../parse';
+import { diffBooking, type Change, type Current, type Parsed } from '../parse';
+import { parseDocument } from '../flights';
 import { canRead, readFileText } from '../reader';
 import { clearHandOff, peekHandOff, setViewing } from '../handoff';
-import { confirm, notify, pickFiles, type Picked } from '../io';
+import { choose, confirm, notify, pickFiles, type Picked } from '../io';
 import { goBack } from '../components';
 import { DateTimeField } from '../DateField';
 import { Button, Card, Chip, Field, Gap, Header, IconButton, Row, Screen, T } from '../ui';
 import { space } from '../theme';
 
-const LABEL: Record<Change['field'], string> = { type: 'Type', title: 'Title', ref: 'Reference', start: 'Starts', end: 'Ends', place: 'Place' };
+const LABEL: Record<Change['field'], string> = { type: 'Type', title: 'Title', ref: 'Reference', start: 'Starts', end: 'Ends', place: 'Place', notes: 'Notes' };
 // With the year: a ticket read for the wrong year is the mistake worth catching here.
 const stamp = (v: string) => new Date(v).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
 const show = (field: Change['field'], v: string) => (!v ? '(empty)' : field === 'start' || field === 'end' ? stamp(v) : field === 'type' ? BOOKING_TYPE(v).label : v);
+/** One flight as a line in a list: "6E 521 BOM → BLR, 7 Nov 2026 06:15 to 08:20". */
+const oneLine = (p: Parsed) => `${p.title}${p.start ? `, ${stamp(p.start)}${p.end ? ` → ${stamp(p.end).split(',').pop()!.trim()}` : ''}` : ''}`;
 
 /**
  * Add or edit a booking, with its documents. `prefill` is what "Add from a pasted confirmation" found (JSON).
@@ -42,8 +45,9 @@ export default function BookingScreen() {
   const kept = old ? filesOf(log, old.id).filter((a) => !removed.includes(a.id)) : [];
 
   // What the form holds now, for a file that finishes reading a few seconds from now.
-  const now = useRef<Current>({ type, title, ref, start, end, place });
-  useEffect(() => { now.current = { type, title, ref, start, end, place }; });
+  const now = useRef<Current>({ type, title, ref, start, end, place, notes });
+  const pending = useRef<Picked[]>([]); // files on the form, for saving them with several bookings at once
+  useEffect(() => { now.current = { type, title, ref, start, end, place, notes }; pending.current = added; });
 
   /** Read the first readable file and, if it has something to add or change, ask before touching the form. */
   async function readFrom(list: Picked[]) {
@@ -53,7 +57,22 @@ export default function BookingScreen() {
     try {
       const text = await readFileText(f, (m) => setReading(m));
       setLastRead(text);
-      const p = parsePaste(text);
+      let found = parseDocument(text);
+      // A ticket with several flights (a connection, a return): offer one booking for each, as a trip planner would.
+      if (found.length > 1 && !old) {
+        const list2 = found.map((p, i) => `${i + 1}. ${oneLine(p)}`).join('\n');
+        if (await choose(`${found.length} flights found`, `${list2}\n\nAdd each as its own booking? The file is attached to the first.`, `Add all ${found.length}`, 'Only the first')) {
+          const ids = found.map(() => newId('b'));
+          update((l) => found.reduce((n, p, i) => putBooking(n, { id: ids[i], type: 'flight', title: p.title, ref: p.ref ?? '', start: p.start ?? '',
+            end: p.end ?? '', place: p.place ?? '', notes: p.notes ?? '' }), l));
+          for (const file of new Set([...pending.current, ...list])) addFile(ids[0], file);
+          notify(`${found.length} flights added`, 'Each is in Bookings and on its day in the itinerary. Check the times there.');
+          return goBack();
+        }
+        found = [found[0]];
+      }
+      // Editing a booking: use the flight on the file that matches it, if there is one.
+      const p = (old && found.find((x) => x.title && old.title.includes(x.title.split(' ').slice(0, 2).join(' ')))) || found[0];
       const changes = diffBooking(now.current, p, !old);
       if (!changes.length) return notify('Nothing to fill in', `“${f.name}” was read, but it didn’t give anything new for this booking.`);
       const lines = changes.map((ch) => `${LABEL[ch.field]}: ${ch.from ? `${show(ch.field, ch.from)} → ` : ''}${show(ch.field, ch.to)}${ch.guessed ? ' (time not found, please check)' : ''}`);
@@ -65,7 +84,8 @@ export default function BookingScreen() {
         else if (ch.field === 'ref') setRef(ch.to);
         else if (ch.field === 'start') setStart(ch.to);
         else if (ch.field === 'end') setEnd(ch.to);
-        else setPlace(ch.to);
+        else if (ch.field === 'place') setPlace(ch.to);
+        else setNotes(ch.to);
       }
     } catch (e) {
       notify('Couldn’t read this file', `${(e as Error).message} It is still attached, so you can fill in the details by hand.`);

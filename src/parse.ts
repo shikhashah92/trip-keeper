@@ -4,7 +4,7 @@
 import { addDays, dayKey, type BookingType } from './model.ts';
 
 /** `guessed` lists the times that were not found and were set to noon: they need checking. */
-export interface Parsed { type: BookingType; ref?: string; start?: string; end?: string; title: string; place?: string; guessed?: ('start' | 'end')[] }
+export interface Parsed { type: BookingType; ref?: string; start?: string; end?: string; title: string; place?: string; guessed?: ('start' | 'end')[]; notes?: string }
 
 const MONTH: Record<string, number> = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
 const MM = 'jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec';
@@ -46,9 +46,23 @@ const TRIP = /depart|arriv|check-?in|check-?out|pick-?up|drop-?off|\bfrom\b|\bto
 const REF_STOP = /^(CONFIRMED|CONFIRMATION|BOOKING|RESERVATION|DEPARTURE|ARRIVAL|DETAILS|NUMBER|TICKET|STATUS|PASSENGER|ITINERARY|REFERENCE|SUMMARY|RECEIPT)$/;
 const LABEL = /^(?:departure|arrival|depart(?:s|ing)?|arrive(?:s)?|from|to|origin|destination|airport)[\s:.-]*/i;
 
-export function parsePaste(text: string): Parsed {
+/**
+ * The booking reference: it has a digit, or is all capitals (so "booking confirmed" is not a reference), and may sit
+ * on the line below its label. One with a digit wins over a word in capitals.
+ */
+export function findRef(t: string): string | undefined {
+  const refs: string[] = [];
+  const refRx = /(?:confirmation|booking|reservation|reference|PNR|itinerary|order|e-?ticket)(?:[ \t]*\([^)\n]{1,15}\))?(?:[ \t]*(?:number|no\.?|code|id|reference|ref|#))?[ \t]*[:#-]?[ \t]*(?:\n[ \t]*)?([A-Z0-9][A-Z0-9-]{4,15})\b/gi;
+  for (let m = refRx.exec(t); m; m = refRx.exec(t)) {
+    refs.push(m[1]);
+    refRx.lastIndex = m.index + 1; // the value may itself be the next label's start: look again from just after this label
+  }
+  return refs.find((x) => /\d/.test(x)) ?? refs.find((x) => x === x.toUpperCase() && !REF_STOP.test(x));
+}
+
+export function parsePaste(text: string, forceType?: BookingType): Parsed {
   const t = text.replace(/\r/g, '');
-  const type = classify(t);
+  const type = forceType ?? classify(t);
   const out: Parsed = { type, title: '' };
   const lineAt = (i: number) => {
     const ls = t.lastIndexOf('\n', i) + 1;
@@ -56,15 +70,7 @@ export function parsePaste(text: string): Parsed {
     return t.slice(ls, le < 0 ? t.length : le);
   };
 
-  // A reference has a digit, or is all capitals (so "booking confirmed" is not a reference). It may sit on the line
-  // below its label. One with a digit wins over a word in capitals.
-  const refs: string[] = [];
-  const refRx = /(?:confirmation|booking|reservation|reference|PNR|itinerary|order|e-?ticket)(?:[ \t]*(?:number|no\.?|code|id|reference|ref|#))?[ \t]*[:#-]?[ \t]*(?:\n[ \t]*)?([A-Z0-9][A-Z0-9-]{4,15})\b/gi;
-  for (let m = refRx.exec(t); m; m = refRx.exec(t)) {
-    refs.push(m[1]);
-    refRx.lastIndex = m.index + 1; // the value may itself be the next label's start: look again from just after this label
-  }
-  out.ref = refs.find((x) => /\d/.test(x)) ?? refs.find((x) => x === x.toUpperCase() && !REF_STOP.test(x));
+  out.ref = findRef(t);
 
   // Dates, in the ways tickets write them: 2026-11-07, 7 Nov 2026, 7th November 2026, 07NOV26, 7 Nov '26, Nov 7, 2026,
   // 07/11/2026 (day first, as in India and Europe), and "Sat, 07 Nov" with no year (the year of the other dates is used).
@@ -140,6 +146,11 @@ export function parsePaste(text: string): Parsed {
     d.setMinutes(d.getMinutes() + plusMinutes);
     return `${dayKey(d)}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
   };
+  /** "08:20 +1" or "(+1)": the arrival is on a later day than its date says. */
+  const later = (c: Clock | null | undefined, date: string) => {
+    const m = c ? t.slice(c.to, c.to + 8).match(/^\s*\(?\+\s?(\d)\b/) : null;
+    return m ? addDays(date, +m[1]) : date;
+  };
   if (dates[0]) {
     const c0 = timeNear(dates[0].i);
     const t0 = c0?.time ?? null;
@@ -148,7 +159,7 @@ export function parsePaste(text: string): Parsed {
     const e = dates.find((f) => f.i !== dates[0].i && f.date >= dates[0].date);
     if (e) {
       const c1 = timeNear(e.i, false);
-      out.end = `${e.date}T${c1?.time ?? '12:00'}`;
+      out.end = `${later(c1, e.date)}T${c1?.time ?? '12:00'}`;
       if (!c1) out.guessed = [...(out.guessed ?? []), 'end'];
     } else if (c0) {
       // One date, one start time. The end is a range after it ("10:00 - 12:30", "from 10 AM to 12 PM"), a stated
@@ -161,7 +172,9 @@ export function parsePaste(text: string): Parsed {
       else if (dur) out.end = stamp(dates[0].date, c0.time, Math.round(+dur[1] * (/^h/i.test(dur[2]) ? 60 : 1)));
       else if (type === 'flight' || type === 'train') {
         const c1 = clocksIn(c0.to, Math.min(next, c0.to + 400), false).find((x) => !used.has(x.at));
-        if (c1) { used.add(c1.at); out.end = `${c1.time > c0.time ? dates[0].date : addDays(dates[0].date, 1)}T${c1.time}`; }
+        if (c1) { used.add(c1.at); // An explicit "+1" says how many days later; without one, an earlier clock time means the next day.
+          const plus = t.slice(c1.to, c1.to + 8).match(/^\s*\(?\+\s?(\d)\b/);
+          out.end = `${plus ? addDays(dates[0].date, +plus[1]) : c1.time > c0.time ? dates[0].date : addDays(dates[0].date, 1)}T${c1.time}`; }
       }
     }
   }
@@ -190,9 +203,9 @@ export function parsePaste(text: string): Parsed {
   return out;
 }
 
-export type Field = 'type' | 'title' | 'ref' | 'start' | 'end' | 'place';
+export type Field = 'type' | 'title' | 'ref' | 'start' | 'end' | 'place' | 'notes';
 export interface Change { field: Field; from: string; to: string; guessed: boolean }
-export interface Current { type: BookingType; title: string; ref: string; start: string; end: string; place: string }
+export interface Current { type: BookingType; title: string; ref: string; start: string; end: string; place: string; notes?: string }
 
 /**
  * What reading a file would change in a booking form. Only things the file actually gave are proposed, and a title or
@@ -208,5 +221,8 @@ export function diffBooking(cur: Current, p: Parsed, isNew: boolean): Change[] {
   put('start', cur.start, p.start, !!p.guessed?.includes('start'));
   put('end', cur.end, p.end, !!p.guessed?.includes('end'));
   put('place', cur.place, p.place);
+  // Details from the file go into the notes: filled in when empty, added below what is there otherwise (never replacing it).
+  const have = (cur.notes ?? '').trim();
+  if (p.notes && !have.includes(p.notes.split('\n')[0])) put('notes', have, have ? `${have}\n\n${p.notes}` : p.notes);
   return out;
 }
