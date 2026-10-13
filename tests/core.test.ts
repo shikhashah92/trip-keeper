@@ -402,6 +402,48 @@ test('departure and arrival terminals are their own categories, and a lone termi
   assert.ok(lines(f.notes).includes('From: Mumbai (BOM)') && lines(f.notes).includes('To: Abu Dhabi (AUH)'));
 });
 
+test('stays: the date and time after Check-in and Check-out, in the ways Airbnb and hotels write them', () => {
+  const doc = (...lines: string[]) => lines.join('\n');
+  // Airbnb: labels on their own lines, dates with no year, "After 3:00 PM"
+  const airbnb = parsePaste(doc('Airbnb', 'Reservation confirmed', 'Confirmation code', 'HMQ8K2XD9P', 'Cozy flat in Gràcia', 'Entire home hosted by Maria Lopez',
+    'Check-in', 'Fri, Oct 23', 'After 3:00 PM', 'Checkout', 'Mon, Oct 26', '11:00 AM', '3 nights · 2 guests', 'Address', 'Carrer de Verdi 12, Barcelona'));
+  assert.equal(airbnb.type, 'airbnb');
+  assert.equal(airbnb.ref, 'HMQ8K2XD9P');
+  assert.match(airbnb.start ?? '', /^\d{4}-10-23T15:00$/);
+  assert.match(airbnb.end ?? '', /^\d{4}-10-26T11:00$/);
+  assert.equal(airbnb.guessed, undefined);
+  assert.equal(airbnb.place, 'Carrer de Verdi 12, Barcelona');
+  assert.deepEqual(airbnb.notes?.split('\n'), ['Nights: 3', 'Guests: 2', 'Host: Maria Lopez']);
+
+  // Booking.com: "(from 15:00)" and "(until 11:00)" on the same line
+  const hotel = parsePaste(doc('Hotel Arts Barcelona', 'Booking number: 3318201457', 'Check-in: Friday, 23 October 2026 (from 15:00)', 'Check-out: Monday, 26 October 2026 (until 11:00)'));
+  assert.equal(hotel.type, 'hotel');
+  assert.equal(hotel.start, '2026-10-23T15:00');
+  assert.equal(hotel.end, '2026-10-26T11:00');
+
+  // a header row of labels, with the values on the next lines in the same order
+  const row = parsePaste(doc('Hotel Arts Barcelona', 'Check-in   Check-out', 'Fri, 23 Oct 2026   Mon, 26 Oct 2026', 'From 15:00   Until 12:00'));
+  assert.equal(row.start, '2026-10-23T15:00');
+  assert.equal(row.end, '2026-10-26T12:00');
+
+  // a range of dates, with the times given as "Check-in time"
+  const range = parsePaste(doc('Airbnb reservation', 'Dates: Oct 23 – 26, 2026', 'Check-in time: 3:00 PM', 'Checkout time: 11:00 AM'));
+  assert.equal(range.start, '2026-10-23T15:00');
+  assert.equal(range.end, '2026-10-26T11:00');
+  const across = parsePaste(doc('Hotel Arts', 'Oct 30 – Nov 2, 2026', 'Check-in 2:00 PM', 'Check-out 12:00 PM'));
+  assert.equal(across.start, '2026-10-30T14:00');
+  assert.equal(across.end, '2026-11-02T12:00');
+
+  // a later "please arrive before 8 PM" does not take over from the labelled check-in
+  const policy = parsePaste(doc('Hotel Arts', 'Check-in: 23 Oct 2026, 2:00 PM', 'Check-out: 26 Oct 2026, 12:00 PM', 'Please arrive before 8 PM or tell the hotel.'));
+  assert.equal(policy.start, '2026-10-23T14:00');
+  assert.equal(policy.end, '2026-10-26T12:00');
+
+  // a date with no time is flagged, not silently noon
+  const noTime = parsePaste(doc('Hotel Arts', 'Check-in: 23 Oct 2026', 'Check-out: 26 Oct 2026'));
+  assert.deepEqual(noTime.guessed, ['start', 'end']);
+});
+
 test('notes from a file are added below what is there, never over it', () => {
   const p = { type: 'flight' as const, title: 'AI 131 BOM → LHR', notes: 'Airline: Air India\nFlight: AI 131' };
   const empty = { type: 'flight' as const, title: '', ref: '', start: '', end: '', place: '', notes: '' };

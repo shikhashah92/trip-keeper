@@ -18,7 +18,7 @@ const SIGNALS: Record<Exclude<BookingType, 'other'>, [RegExp, number][]> = {
     [/e-?ticket/, 2], [/\bgate\b/, 1], [/\bterminal\b/, 1], [/\bdepart(s|ure)?\b/, 1], [/\bseat\b/, 1], [/\bbaggage\b|\bcabin\b/, 1]],
   hotel: [[/\bhotel\b/, 3], [/check-?in/, 2], [/check-?out/, 2], [/\bresort\b/, 2], [/\brooms?\b/, 1], [/\bnights?\b/, 2], [/\bguests?\b/, 1],
     [/booking\.com|agoda|expedia|hotels\.com|\boyo\b/, 2], [/\bstay\b/, 1], [/\breception\b/, 1]],
-  airbnb: [[/airbnb/, 6], [/\bhost\b/, 1], [/\bentire (home|place|apartment|villa)\b/, 3]],
+  airbnb: [[/airbnb/, 6], [/\bhost\b/, 1], [/hosted by/, 3], [/\bentire (home|place|apartment|villa)\b/, 3]],
   car: [[/car rental|rental car|car hire/, 5], [/hertz|avis|europcar|sixt|enterprise|zoomcar|drivezy/, 4], [/drop-?off/, 2], [/pick-?up/, 2], [/\bmileage\b|fuel policy|\bdeposit\b/, 2]],
   train: [[/\btrain\b/, 3], [/renfe|irctc|eurostar|amtrak|sncf|trenitalia|deutsche bahn|redbus/, 4], [/\brail\b/, 2], [/\bplatform\b/, 2], [/\bbus\b/, 2], [/\bcoach\b/, 1]],
   activity: [[/admission|\bentry\b/, 2], [/\btickets?\b/, 1], [/\btour\b|excursion|museum|guided|sightseeing/, 3], [/\bvoucher\b/, 1],
@@ -84,6 +84,19 @@ export function parsePaste(text: string, forceType?: BookingType): Parsed {
   for (const m of t.matchAll(new RegExp(`(${MM})[a-z]*\\.?\\s+(\\d{1,2})(?:st|nd|rd|th)?,?\\s+(\\d{4})`, 'gi'))) add(m.index, +m[3], MONTH[m[1].toLowerCase()], +m[2]);
   for (const m of t.matchAll(/(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})/g)) add(m.index, +m[3], +m[2], +m[1]);
   for (const m of t.matchAll(/(\d{1,2})\/(\d{1,2})\/(\d{2})(?![\d:])/g)) add(m.index, 2000 + +m[3], +m[2], +m[1]);
+  // Ranges, as Airbnb and hotels write a stay: "Oct 23 – 26, 2026", "23–26 Oct 2026", "Oct 30 – Nov 2, 2026". Two dates each.
+  const DASH = '(?:[–—-]|\\bto\\b)';
+  for (const m of t.matchAll(new RegExp(`(${MM})[a-z]*\\.?\\s+(\\d{1,2})(?:st|nd|rd|th)?\\s*${DASH}\\s*(?:(${MM})[a-z]*\\.?\\s+)?(\\d{1,2})(?:st|nd|rd|th)?,?\\s+(\\d{4})`, 'gi'))) {
+    const mo1 = MONTH[m[1].toLowerCase()];
+    const at2 = m.index + m[0].search(/[–—-]|\bto\b/i) + 1;
+    add(m.index, +m[5], mo1, +m[2]);
+    add(at2, +m[5], m[3] ? MONTH[m[3].toLowerCase()] : mo1, +m[4]);
+  }
+  for (const m of t.matchAll(new RegExp(`(\\d{1,2})(?:st|nd|rd|th)?\\s*${DASH}\\s*(\\d{1,2})(?:st|nd|rd|th)?[\\s.-]*(${MM})[a-z]*\\.?,?\\s+(\\d{4})`, 'gi'))) {
+    const mo = MONTH[m[3].toLowerCase()];
+    add(m.index, +m[4], mo, +m[1]);
+    add(m.index + m[0].search(/[–—-]|\bto\b/i) + 1, +m[4], mo, +m[2]);
+  }
   // No year: borrow it from a date that has one, else the current year (a past date then means next year).
   const withYear = found.length ? +found[0].date.slice(0, 4) : null;
   for (const m of t.matchAll(new RegExp(`(\\d{1,2})(?:st|nd|rd|th)?[\\s-]+(${MM})[a-z]*\\b(?![\\s,'’.-]*\\d{2,4}(?![\\d:]))`, 'gi'))) {
@@ -93,7 +106,16 @@ export function parsePaste(text: string, forceType?: BookingType): Parsed {
     if (withYear === null && new Date(y, mo - 1, +m[1]).getTime() < Date.now() - 60 * 864e5) y++;
     add(m.index, y, mo, +m[1]);
   }
+  for (const m of t.matchAll(new RegExp(`\\b(${MM})[a-z]*\\.?\\s+(\\d{1,2})(?:st|nd|rd|th)?\\b(?![\\d:])(?!\\s*,?\\s*\\d{4})`, 'gi'))) {
+    if (found.some((f) => Math.abs(f.i - m.index) < 2)) continue; // already read, with its year or as part of a range
+    const mo = MONTH[m[1].toLowerCase()];
+    let y = withYear ?? new Date().getFullYear();
+    if (withYear === null && new Date(y, mo - 1, +m[2]).getTime() < Date.now() - 60 * 864e5) y++;
+    add(m.index, y, mo, +m[2]);
+  }
   found.sort((a, b) => a.i - b.i);
+  // The same date read two ways at nearly the same place (a range and a plain date) is one date.
+  for (let k = found.length - 1; k > 0; k--) if (found[k].date === found[k - 1].date && found[k].i - found[k - 1].i < 6) found.splice(k, 1);
   // Dates on "booked on" or "payment" lines are not the trip. If that leaves nothing, keep them all.
   // A date is the booking's, not the trip's, when a booking label is on its line, or sits alone on its line under or
   // over such a label ("Booking date" / "19 Aug 2026"). That date is then left out wherever else it appears, unless that
@@ -206,6 +228,65 @@ export function parsePaste(text: string, forceType?: BookingType): Parsed {
     }
   }
 
+  // A stay says what it means: the date and time after "Check-in" and after "Check-out" (or Arrive / Depart / Leave).
+  // The value may follow its label, or the labels may be a header row with the values on the line below in the same order.
+  if (type === 'hotel' || type === 'airbnb') {
+    const labs: { at: number; end: number; kind: 'in' | 'out' }[] = [];
+    for (const m of t.matchAll(/check[\s-]?in|\barriv(?:e|es|al|ing)\b/gi)) labs.push({ at: m.index, end: m.index + m[0].length, kind: 'in' });
+    for (const m of t.matchAll(/check[\s-]?out|\bdepart(?:s|ure)?\b|\bleav(?:e|es|ing)\b/gi)) labs.push({ at: m.index, end: m.index + m[0].length, kind: 'out' });
+    labs.sort((a, b) => a.at - b.at);
+    const got: { in?: { date?: string; time?: string }; out?: { date?: string; time?: string } } = {};
+    const put = (kind: 'in' | 'out', date?: string, time?: string) => {
+      const cur = got[kind] ?? {};
+      got[kind] = { date: cur.date ?? date, time: cur.time ?? time };
+    };
+    for (let k = 0; k < labs.length; k++) {
+      const lab = labs[k];
+      const stop = Math.min(labs[k + 1]?.at ?? t.length, lab.end + 200);
+      const d = dates.find((f) => f.i >= lab.end && f.i < stop);
+      if (d) { put(lab.kind, d.date, clocksIn(d.i, stop, false)[0]?.time); continue; }
+      // A time with the label but the date elsewhere: "Check-in time: 3:00 PM".
+      const c = clocksIn(lab.end, stop, false)[0];
+      const nextIsClose = labs[k + 1] && labs[k + 1].at - lab.end < 80 && !dates.some((f) => f.i >= lab.end && f.i < labs[k + 1].at);
+      // A label that has its own time right after it ("Check-in time: 3:00 PM") is not a header row, however near the next label is.
+      if (!nextIsClose || c) { if (c) put(lab.kind, undefined, c.time); continue; }
+      // A header row: this label and the ones right after it, then their values in the same order below.
+      let g = k;
+      while (labs[g + 1] && labs[g + 1].at - labs[g].end < 80 && !dates.some((f) => f.i >= labs[g].end && f.i < labs[g + 1].at)) g++;
+      const group = labs.slice(k, g + 1);
+      const ds = dates.filter((f) => f.i >= labs[g].end).slice(0, group.length);
+      const cs = clocksIn(labs[g].end, ds.length ? Math.min(t.length, ds[ds.length - 1].i + 160) : labs[g].end + 240, false);
+      group.forEach((l, j) => put(l.kind, ds[j]?.date, cs[j]?.time));
+      k = g;
+    }
+    const set = (kind: 'in' | 'out') => {
+      const v = got[kind];
+      if (!v) return;
+      const key = kind === 'in' ? 'start' : 'end';
+      const date = v.date ?? out[key]?.slice(0, 10);
+      if (!date) return;
+      out[key] = `${date}T${v.time ?? '12:00'}`;
+      out.guessed = (out.guessed ?? []).filter((x) => x !== key);
+      if (!v.time) out.guessed.push(key);
+      if (!out.guessed.length) delete out.guessed;
+    };
+    set('in');
+    set('out');
+    // Notes a traveller wants: how many nights and guests, the room, the host, a phone number.
+    const nt: string[] = [];
+    const nights = t.match(/(\d{1,2})\s*nights?\b/i);
+    const guests = t.match(/(\d{1,2})\s*(?:adults?|guests?)\b/i) ?? t.match(/guests?\s*[:\-]?\s*(\d{1,2})\b/i);
+    const room = t.match(/\broom(?:\s*type)?\s*[:\-]\s*([^\n]{3,50})/i);
+    const host = t.match(/hosted by\s+([A-Z][A-Za-z]+(?: [A-Z][A-Za-z]+)?)/);
+    const phone = t.match(/(?:phone|tel(?:ephone)?|contact)\s*[:\-]?\s*(\+?\d[\d ()-]{7,16}\d)/i);
+    if (nights) nt.push(`Nights: ${nights[1]}`);
+    if (guests) nt.push(`Guests: ${guests[1]}`);
+    if (room) nt.push(`Room: ${room[1].trim()}`);
+    if (host) nt.push(`Host: ${host[1]}`);
+    if (phone) nt.push(`Phone: ${phone[1].trim()}`);
+    if (nt.length) out.notes = nt.join('\n');
+  }
+
   // Title: an email subject, then a labelled name ("Hotel: ..."), then a flight's number and route, then the first
   // line that isn't boilerplate.
   const sub = t.match(/^subject:\s*(.+)$/im);
@@ -219,7 +300,7 @@ export function parsePaste(text: string, forceType?: BookingType): Parsed {
   out.title = (sub ? sub[1].replace(/^((fwd?|re):\s*)+/i, '') : named ? named[1].trim() : flightTitle || first).slice(0, 90);
 
   // Place: a labelled address or venue; for a flight, the departure airport.
-  const ad = t.match(/^(?:property |hotel |pick-?up |venue |meeting point |where\s*)?(?:address|location|venue|meeting point)\s*[:\-]\s*(.+)$/im);
+  const ad = t.match(/^(?:property |hotel |pick-?up |venue |meeting point |where\s*)?(?:address|location|venue|meeting point)\b[ \t]*[:\-]?[ \t]*\n?[ \t]*(.+)$/im);
   if (ad) out.place = ad[1].trim();
   else if (type === 'flight') {
     for (const m of t.matchAll(/([A-Za-z][A-Za-z .'-]{1,40}?)\s*\(([A-Z]{3})\)/g)) {

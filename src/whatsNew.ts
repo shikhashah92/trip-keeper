@@ -10,6 +10,7 @@ export const RELEASES: Release[] = [
   { date: '2026-10-13', title: 'Add a booking from a file', changes: [
     { kind: 'new', icon: 'document-attach-outline', title: 'Add from a PDF or screenshot', text: 'Pick a ticket or confirmation and the booking is filled in for you to check: type, reference, dates, times and place.' },
     { kind: 'new', icon: 'refresh-outline', title: 'Update from a new file', text: 'Attach a changed ticket to a booking and see what differs before anything is updated.' },
+    { kind: 'fixed', icon: 'bed-outline', title: 'Hotel and Airbnb check-in and check-out', text: 'The date and time after Check-in and Check-out are read as written, including dates like Oct 23 – 26, a missing year, After 3:00 PM and a header row with the values below. Nights, guests and the host go in the notes.' },
     { kind: 'fixed', icon: 'calendar-outline', title: 'Booking date is not the flight date', text: 'A date labelled as when the ticket was booked, above, below or beside it, is no longer taken for the trip.' },
     { kind: 'new', icon: 'business-outline', title: 'Departure and arrival terminals', text: 'A flight lists its departure terminal and its arrival terminal separately in the notes.' },
     { kind: 'new', icon: 'copy-outline', title: 'Copy text from a file', text: 'Open a ticket and select its text like in any PDF viewer, or tap Copy text to copy the whole thing.' },
