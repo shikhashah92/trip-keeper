@@ -1,0 +1,23 @@
+{
+  "expo": {
+    "name": "Trip Keeper",
+    "slug": "trip-keeper",
+    "scheme": "tripkeeper",
+    "version": "2.0.0",
+    "userInterfaceStyle": "automatic",
+    "web": {
+      "output": "single",
+      "favicon": "./public/icon-192.png",
+      "name": "Trip Keeper",
+      "shortName": "Trip Keeper",
+      "backgroundColor": "#F6F5F1"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-font"
+    ],
+    "experiments": {
+      "baseUrl": "/trip-keeper"
+    }
+  }
+}

@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="%LANG_ISO_CODE%">
+  <head>
+    <meta charset="utf-8" />
+    <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <!-- GitHub Pages can't send headers, so the content security policy lives here. Nothing may load or connect
+         anywhere but this site: no third-party requests, no inline scripts. -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'" />
+    <meta name="description" content="Trip Keeper: a private, offline-first travel organizer. Your data stays on your phone." />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Trip Keeper" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#F6F5F1" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#111517" />
+    <!-- Relative paths: the app can also be served from a sub-folder, and every route is one level deep. -->
+    <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+    <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <title>%WEB_TITLE%</title>
+    <style id="expo-reset">
+      /* Fonts are self-hosted: no request ever leaves for a font service. */
+      @font-face { font-family: "Archivo"; font-weight: 100 900; font-display: swap; src: url(fonts/Archivo-latin.woff2) format("woff2"); }
+      html, body { height: 100%; }
+      body {
+        overflow: hidden;
+        background: #F6F5F1;
+        overscroll-behavior: none; /* no rubber-band / pull-to-refresh in the installed app */
+        -webkit-tap-highlight-color: transparent;
+        -webkit-text-size-adjust: 100%;
+      }
+      * { touch-action: manipulation; } /* no double-tap zoom delay */
+      input:focus, textarea:focus { outline: none; } /* fields show focus with their own border */
+      @media (prefers-color-scheme: dark) { body { background: #111517; } }
+      /* Pinned to the viewport edges so nothing can scroll the app shell itself. */
+      #root { display: flex; position: fixed; inset: 0; }
+    </style>
+  </head>
+  <body>
+    <noscript>You need to enable JavaScript to run this app.</noscript>
+    <div id="root"></div>
+  </body>
+</html>

@@ -1,0 +1,38 @@
+{
+  "name": "trip-keeper",
+  "version": "2.0.0",
+  "main": "expo-router/entry",
+  "dependencies": {
+    "@expo/vector-icons": "^15.0.2",
+    "expo": "~57.0.25",
+    "expo-constants": "~57.0.19",
+    "expo-font": "~57.0.4",
+    "expo-linking": "~57.0.11",
+    "expo-router": "~57.0.23",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "react-native": "0.86.3",
+    "react-native-safe-area-context": "~5.7.0",
+    "react-native-screens": "~4.26.0",
+    "react-native-svg": "15.15.4",
+    "react-native-web": "^0.21.2"
+  },
+  "devDependencies": {
+    "@types/react": "~19.2.2",
+    "eslint": "^9.39.5",
+    "eslint-config-expo": "~57.0.2",
+    "typescript": "~6.0.3"
+  },
+  "scripts": {
+    "start": "expo start --web",
+    "build:web": "expo export -p web",
+    "test": "node --test tests/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "CI=1 expo lint",
+    "check": "npm run typecheck && npm run lint && npm run build:web && REQUIRE_DIST=1 npm test"
+  },
+  "private": true,
+  "engines": {
+    "node": ">=22.18"
+  }
+}
