@@ -5,6 +5,7 @@ import { useLog, useTheme } from '../../store';
 import { backupDue, fmtDate, hero, dayLabel, today, todayView, type TripEvent } from '../../model';
 import { EventRow } from '../../components';
 import { LATEST } from '../../whatsNew';
+import { useUpdate } from '../../pwa';
 import { Banner, Button, Card, Gap, Header, Screen, T } from '../../ui';
 import { space } from '../../theme';
 
@@ -27,6 +28,7 @@ export default function Today() {
     document.addEventListener('visibilitychange', h);
     return () => document.removeEventListener('visibilitychange', h);
   }, []);
+  const upd = useUpdate();
   const t = log.trip;
   const h = hero(t, day);
   const v = todayView(log, day);
@@ -34,6 +36,7 @@ export default function Today() {
   return (
     <Screen>
       <Header title={t.name} right={<T v="label" color={t.final ? c.accent : c.warnText}>{t.final ? 'Final' : 'Draft'}</T>} />
+      {upd.ready ? <><Banner text="A new version of Trip Keeper is ready." action="Reload" onPress={upd.reload} /><Gap /></> : null}
       {backupDue(log) ? <><Banner text="It has been a week. Save a backup so a lost phone doesn’t lose your trip." action="Back up" onPress={() => router.push('/backup')} /><Gap /></> : null}
       <Card style={{ backgroundColor: c.brand, borderWidth: 0 }}>
         <T v="big" color={c.onAccent}>{h.title}</T>

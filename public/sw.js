@@ -1,7 +1,7 @@
 // Trip Keeper service worker: the app opens instantly and works offline. Data itself lives in IndexedDB, not here.
 // Everything is relative to the worker's scope, so it works at a domain's root or in a sub-folder.
 // ponytail: old hashed bundles are dropped only when CACHE is bumped; fine for a few-MB app.
-const CACHE = 'trip-keeper-v2';
+const CACHE = 'trip-keeper-v3';
 const ROOT = new URL(self.registration.scope).pathname; // "/" on the app's own domain
 const at = (p) => ROOT + p;
 const SHELL = ['', 'manifest.webmanifest', 'icon-192.png', 'apple-touch-icon.png', 'favicon.svg', 'fonts/Archivo-latin.woff2',
@@ -36,7 +36,8 @@ self.addEventListener('fetch', (e) => {
   if (req.mode === 'navigate') {
     // Network first so deploys show up; the cached shell when offline. Every route uses the same shell
     // (GitHub Pages serves deep links as 404.html, a copy of the shell: use it, but only cache real 200s).
-    e.respondWith(fetch(req).then((res) => {
+    // no-cache: ask the server every time, so a deploy shows up at once and not after the browser's own 10 minute cache.
+    e.respondWith(fetch(req, { cache: 'no-cache' }).then((res) => {
       if (res.ok && (res.headers.get('content-type') ?? '').includes('text/html')) { const copy = res.clone(); caches.open(CACHE).then((c) => c.put(ROOT, copy)); }
       return res;
     }).catch(() => caches.match(ROOT)));

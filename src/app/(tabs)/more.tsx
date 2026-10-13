@@ -4,8 +4,8 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useLog, useTheme } from '../../store';
 import { backupDue, fmtDate, type Theme } from '../../model';
 import { LATEST } from '../../whatsNew';
-import { isStandalone } from '../../pwa';
-import { Badge, Card, Gap, Header, Row, Screen, Segmented, T } from '../../ui';
+import { isStandalone, useUpdate } from '../../pwa';
+import { Badge, Button, Card, Gap, Header, Row, Screen, Segmented, T } from '../../ui';
 import { space } from '../../theme';
 
 const go = (path: string) => () => router.push(path as never);
@@ -13,6 +13,7 @@ const Chevron = () => { const { c } = useTheme(); return <Ionicons name="chevron
 
 export default function More() {
   const { log, update, pin } = useLog();
+  const upd = useUpdate();
   const t = log.trip;
   const dates = t.start ? `${fmtDate(t.start)} → ${t.end ? fmtDate(t.end) : '?'}` : 'Set your trip dates';
   return (
@@ -42,6 +43,9 @@ export default function More() {
       </Card>
       <Gap />
       <View style={{ paddingHorizontal: space.sm }}>
+        <T v="small" style={{ marginBottom: space.sm }}>Version {LATEST.date}{upd.ready ? ' · a newer version is ready' : ''}</T>
+        <Button title={upd.ready ? 'Reload to update' : 'Reload the app'} icon="refresh-outline" kind="secondary" onPress={upd.reload} />
+        <Gap />
         <T v="small">Everything stays on this phone. There is no account and no server. Save a backup now and then, because clearing browser data or losing the phone removes it.</T>
       </View>
     </Screen>
