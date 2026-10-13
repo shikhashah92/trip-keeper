@@ -34,6 +34,15 @@ export const AIRPORTS: Record<string, string> = {
   JNB: 'Johannesburg', CPT: 'Cape Town', JFK: 'New York (JFK)', EWR: 'Newark', LAX: 'Los Angeles', SFO: 'San Francisco', ORD: 'Chicago', IAD: 'Washington (Dulles)',
   ATL: 'Atlanta', DFW: 'Dallas', BOS: 'Boston', SEA: 'Seattle', MIA: 'Miami', IAH: 'Houston', YYZ: 'Toronto', YVR: 'Vancouver', MEX: 'Mexico City', GRU: 'São Paulo',
 };
+// Names a ticket may use for a city, when it gives no airport code: "Bombay", "New Delhi", "Mumbai".
+const CITY_CODE: Record<string, string> = (() => {
+  const m: Record<string, string> = { bombay: 'BOM', 'new delhi': 'DEL', bangalore: 'BLR', calcutta: 'CCU', madras: 'MAA', cochin: 'COK', trivandrum: 'TRV', panaji: 'GOI', 'dabolim': 'GOI', 'mopa': 'GOX', baroda: 'BDQ' };
+  for (const [c, name] of Object.entries(AIRPORTS)) { const base = name.replace(/\s*\(.*\)\s*$/, '').toLowerCase(); if (!(base in m)) m[base] = c; }
+  return m;
+})();
+const escapeRx = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, (c) => `\\${c}`);
+const CITY_RX = new RegExp(`\\b(${Object.keys(CITY_CODE).sort((a, b) => b.length - a.length).map(escapeRx).join('|')})\\b(?!\\s+(?:airlines?|airways|air\\b))`, 'gi');
+
 const code = (c: string) => (AIRPORTS[c] ? `${AIRPORTS[c]} (${c})` : c);
 
 export interface FlightSegment extends Parsed { flightNo: string; airline?: string; from?: string; to?: string }
@@ -72,6 +81,8 @@ function airportsIn(s: string): { code: string; name: string }[] {
     add(m[2], /^(departure|arrival|airport|terminal|flight|gate)$/i.test(name) || name.length < 3 ? '' : name);
   }
   if (out.length < 2) for (const m of s.matchAll(/\b([A-Z]{3})\s*(?:→|->|–|—|-|to)\s*([A-Z]{3})\b/g)) { add(m[1]); add(m[2]); }
+  // No codes: look for city names, in the order they appear.
+  if (out.length < 2) for (const m of s.matchAll(CITY_RX)) { const c = CITY_CODE[m[1].toLowerCase()]; if (c) add(c, AIRPORTS[c]?.replace(/\s*\(.*\)\s*$/, '') ?? ''); }
   return out;
 }
 const clean = (v: string) => v.replace(/\s+/g, ' ').trim();

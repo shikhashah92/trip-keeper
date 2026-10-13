@@ -74,7 +74,7 @@ export default function BookingScreen() {
       // Editing a booking: use the flight on the file that matches it, if there is one.
       const p = (old && found.find((x) => x.title && old.title.includes(x.title.split(' ').slice(0, 2).join(' ')))) || found[0];
       const changes = diffBooking(now.current, p, !old);
-      if (!changes.length) return notify('Nothing to fill in', `“${f.name}” was read, but it didn’t give anything new for this booking.`);
+      if (!changes.length) return notify('Nothing to fill in', `“${f.name}” was read, but it didn’t give anything new for this booking. If you expected more, tap “Copy the text that was read” below to see what the reader had to work with.`);
       const lines = changes.map((ch) => `${LABEL[ch.field]}: ${ch.from ? `${show(ch.field, ch.from)} → ` : ''}${show(ch.field, ch.to)}${ch.guessed ? ' (time not found, please check)' : ''}`);
       const ok = await confirm(old ? 'Update from this file?' : 'Fill in from this file?', `${lines.join('\n')}\n\nCheck these before you save.`, old ? 'Update' : 'Fill in');
       if (!ok) return;

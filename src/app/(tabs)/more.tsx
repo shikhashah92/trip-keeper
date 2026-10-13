@@ -43,7 +43,7 @@ export default function More() {
       </Card>
       <Gap />
       <View style={{ paddingHorizontal: space.sm }}>
-        <T v="small" style={{ marginBottom: space.sm }}>Version {LATEST.date}{upd.ready ? ' · a newer version is ready' : ''}</T>
+        <T v="small" style={{ marginBottom: space.sm }}>Version {LATEST.date} · build {process.env.EXPO_PUBLIC_BUILD ?? 'dev'}{upd.ready ? ' · a newer version is ready' : ''}</T>
         <Button title={upd.ready ? 'Reload to update' : 'Reload the app'} icon="refresh-outline" kind="secondary" onPress={upd.reload} />
         <Gap />
         <T v="small">Everything stays on this phone. There is no account and no server. Save a backup now and then, because clearing browser data or losing the phone removes it.</T>

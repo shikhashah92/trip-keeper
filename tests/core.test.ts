@@ -239,6 +239,25 @@ test('a single flight still comes back as one booking, and years in the text are
   assert.equal(parseDocument('Hotel Arts\nCheck-in: 24 Oct 2026 3:00 PM\nCheck-out: 27 Oct 2026 11:00').length, 1);
 });
 
+test('a ticket with city names and no airport codes: four flights, each read on its own', () => {
+  const doc = (...lines: string[]) => lines.join('\n');
+  const found = parseDocument(doc('Air India', 'Booking Reference: KP4T7Z',
+    'Flight AI 631', 'From: Mumbai  To: New Delhi', 'Departure: 07 Nov 2026 06:15', 'Arrival: 07 Nov 2026 08:25',
+    'Flight AI 111', 'From: New Delhi  To: London', 'Departure: 07 Nov 2026 13:50', 'Arrival: 07 Nov 2026 18:35',
+    'Flight AI 112', 'From: London  To: New Delhi', 'Departure: 21 Nov 2026 21:30', 'Arrival: 22 Nov 2026 10:05',
+    'Flight AI 632', 'From: New Delhi  To: Mumbai', 'Departure: 22 Nov 2026 12:15', 'Arrival: 22 Nov 2026 14:20'));
+  assert.deepEqual(found.map((f) => [f.title, f.start, f.end]), [
+    ['AI 631 BOM → DEL', '2026-11-07T06:15', '2026-11-07T08:25'],
+    ['AI 111 DEL → LHR', '2026-11-07T13:50', '2026-11-07T18:35'],
+    ['AI 112 LHR → DEL', '2026-11-21T21:30', '2026-11-22T10:05'],
+    ['AI 632 DEL → BOM', '2026-11-22T12:15', '2026-11-22T14:20'],
+  ]);
+  assert.ok(found.every((f) => f.ref === 'KP4T7Z'));
+  // the airline's own name is not a city: "Singapore Airlines" must not make Singapore an airport
+  const sq = parseDocument(['Singapore Airlines e-ticket', 'SQ 423 Mumbai (BOM) to Singapore (SIN)', 'Departure 07 Nov 2026 01:35', 'Arrival 07 Nov 2026 09:55'].join('\n'));
+  assert.equal(sq[0].title, 'SQ 423 BOM → SIN');
+});
+
 test('notes from a file are added below what is there, never over it', () => {
   const p = { type: 'flight' as const, title: 'AI 131 BOM → LHR', notes: 'Airline: Air India\nFlight: AI 131' };
   const empty = { type: 'flight' as const, title: '', ref: '', start: '', end: '', place: '', notes: '' };
