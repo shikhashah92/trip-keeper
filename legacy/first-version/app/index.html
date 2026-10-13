@@ -1,0 +1,592 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0f766e">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Trip Keeper">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>Trip Keeper</title>
+<style>
+:root{--bg:#f6f5f1;--card:#fff;--ink:#1d2327;--mute:#6b7378;--line:#e4e2db;--brand:#0f766e;--brand-ink:#fff;--soft:#e3f1ef;--warn:#b45309;--danger:#b91c1c}
+@media(prefers-color-scheme:dark){:root{--bg:#111517;--card:#1b2124;--ink:#eceff0;--mute:#9aa3a8;--line:#2b3338;--brand:#2dd4bf;--brand-ink:#06201c;--soft:#15332f;--warn:#fbbf24;--danger:#f87171}}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+body{padding-bottom:calc(76px + env(safe-area-inset-bottom))}
+header{padding:calc(14px + env(safe-area-inset-top)) 16px 10px}
+h1{margin:0;font-size:22px}
+.sub{color:var(--mute);font-size:14px}
+main{padding:0 14px 16px;max-width:640px;margin:0 auto}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin:0 0 12px}
+.card h2{margin:0 0 8px;font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--mute)}
+.hero{background:var(--brand);color:var(--brand-ink);border:0}
+.hero .sub{color:inherit;opacity:.85}
+.hero b{font-size:26px;display:block}
+.ev{display:flex;gap:10px;padding:10px 0;border-top:1px solid var(--line);cursor:pointer}
+.ev:first-of-type{border-top:0}
+.ev .t{width:46px;flex:none;font-size:13px;color:var(--mute);padding-top:2px}
+.ev .b{flex:1;min-width:0}
+.ev .n{font-weight:600}
+.ev .s{font-size:14px;color:var(--mute);overflow-wrap:anywhere}
+.day{margin:18px 2px 6px;font-weight:700}
+.day small{color:var(--mute);font-weight:400;margin-left:6px}
+.empty{color:var(--mute);padding:6px 0}
+nav{position:fixed;left:0;right:0;bottom:0;display:flex;background:var(--card);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom)}
+nav button{flex:1;border:0;background:none;color:var(--mute);padding:9px 0 8px;font-size:11px}
+nav button span{display:block;font-size:21px}
+nav button.on{color:var(--brand);font-weight:700}
+.fab{position:fixed;right:18px;bottom:calc(86px + env(safe-area-inset-bottom));width:56px;height:56px;border-radius:50%;border:0;background:var(--brand);color:var(--brand-ink);font-size:30px;box-shadow:0 4px 14px #0004}
+.badge{display:inline-block;font-size:12px;padding:2px 8px;border-radius:99px;background:var(--soft);color:var(--brand);margin-left:6px}
+.badge.warn{background:#fef3c7;color:var(--warn)}
+#sheet{position:fixed;inset:0;background:#0007;display:none;align-items:flex-end;z-index:10}
+#sheet.open{display:flex}
+#sheet .in{background:var(--bg);width:100%;max-height:92vh;overflow:auto;border-radius:18px 18px 0 0;padding:14px 16px calc(20px + env(safe-area-inset-bottom));max-width:640px;margin:0 auto}
+#sheet h3{margin:0 0 10px}
+label{display:block;font-size:13px;color:var(--mute);margin:10px 0 3px}
+input,select,textarea{width:100%;padding:11px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);font:inherit}
+textarea{min-height:70px}
+.row{display:flex;gap:8px}.row>*{flex:1}
+.btn{border:0;border-radius:10px;padding:12px 14px;font:inherit;font-weight:600;background:var(--brand);color:var(--brand-ink);width:100%;margin-top:12px}
+.btn.alt{background:var(--card);color:var(--ink);border:1px solid var(--line)}
+.btn.del{background:none;color:var(--danger);border:1px solid var(--danger)}
+.file{display:flex;align-items:center;gap:8px;padding:8px 0;border-top:1px solid var(--line)}
+.file a,.file span.nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--brand);text-decoration:none}
+.file button{border:0;background:none;color:var(--danger);font-size:18px}
+.ref{font-family:ui-monospace,Menlo,monospace;background:var(--soft);padding:1px 6px;border-radius:6px;font-size:13px}
+.hint{font-size:13px;color:var(--mute)}
+.map{font-size:13px;color:var(--brand);text-decoration:none;margin-left:2px}
+#lock{position:fixed;inset:0;background:var(--bg);z-index:50;display:flex;align-items:center;justify-content:center;padding:24px}
+#lock .lk{width:100%;max-width:320px;text-align:center}
+#lock input{text-align:center;font-size:22px;letter-spacing:.3em;margin:10px 0}
+.tb{display:flex;gap:8px;margin:0 0 12px}.tb .btn{margin:0;padding:10px 6px;font-size:14px}
+@media print{nav,.fab,#sheet,#lock,.tb,header .badge{display:none!important}body{background:#fff;color:#000;padding:0}.card{break-inside:avoid;border-color:#ccc;background:#fff}}
+</style>
+</head>
+<body>
+<header><h1 id="ttl">Trip Keeper</h1><div class="sub" id="tsub"></div></header>
+<main id="main"></main>
+<button class="fab" id="fab" aria-label="Add">+</button>
+<nav id="nav">
+  <button data-t="home"><span>🏠</span>Today</button>
+  <button data-t="plan"><span>🗓️</span>Itinerary</button>
+  <button data-t="book"><span>🧳</span>Bookings</button>
+  <button data-t="exp"><span>💶</span>Expenses</button>
+  <button data-t="more"><span>⚙️</span>More</button>
+</nav>
+<div id="sheet"><div class="in" id="sheetIn"></div></div>
+
+<script>
+(() => {
+const TYPES = {flight:['✈️','Flight'],hotel:['🏨','Hotel'],airbnb:['🏠','Airbnb'],car:['🚗','Car rental'],train:['🚆','Train / Bus'],activity:['🎟️','Activity / Ticket'],insurance:['🛡️','Insurance / Visa'],other:['📄','Other']};
+const STAY = new Set(['hotel','airbnb','car']);
+let db, trip = {k:'trip',name:'My Trip',start:'',end:'',final:false}, items=[], bookings=[], files=[];
+let pinRec=null, hiddenAt=0, expenses=[];
+let tab = 'home';
+
+/* ---------- storage (IndexedDB, on-device only) ---------- */
+const open = () => new Promise((res,rej)=>{
+  const r = indexedDB.open('tripkeeper',2);
+  r.onupgradeneeded = () => { const d=r.result; ['items','bookings','files','expenses'].forEach(s=>{ if(!d.objectStoreNames.contains(s)) d.createObjectStore(s,{keyPath:'id'}); }); if(!d.objectStoreNames.contains('meta')) d.createObjectStore('meta',{keyPath:'k'}); };
+  r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+});
+const store = (s,m='readonly') => db.transaction(s,m).objectStore(s);
+const P = r => new Promise((res,rej)=>{ r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error); });
+const getAll = s => P(store(s).getAll());
+const put = (s,v) => P(store(s,'readwrite').put(v));
+const del = (s,id) => P(store(s,'readwrite').delete(id));
+const clearAll = () => Promise.all(['items','bookings','files','expenses','meta'].map(s=>P(store(s,'readwrite').clear())));
+const uid = () => Date.now().toString(36)+Math.random().toString(36).slice(2,8);
+async function load(){
+  items = await getAll('items'); bookings = await getAll('bookings'); files = await getAll('files'); expenses = await getAll('expenses');
+  const t = await P(store('meta').get('trip')); if(t) trip = t;
+  pinRec = (await P(store('meta').get('pin'))) || null;
+}
+
+/* ---------- helpers ---------- */
+const $ = s => document.querySelector(s);
+const esc = s => String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const pad = n => String(n).padStart(2,'0');
+const ymd = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+const today = () => ymd(new Date());
+const addDays = (s,n) => { const d=new Date(s+'T00:00'); d.setDate(d.getDate()+n); return ymd(d); };
+const diff = (a,b) => Math.round((new Date(b+'T00:00')-new Date(a+'T00:00'))/864e5);
+const fmtDate = s => new Date(s+'T00:00').toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'short'});
+const fmtLong = s => new Date(s+'T00:00').toLocaleDateString('en-IN',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+const fmtDT = s => s ? new Date(s).toLocaleString('en-IN',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit',hour12:false}) : '';
+
+function events(){
+  const ev=[];
+  items.forEach(i=>ev.push({date:i.date,time:i.time||'',icon:'📍',title:i.title,sub:[i.place,i.notes].filter(Boolean).join(' · '),place:i.place,src:'item',id:i.id}));
+  bookings.forEach(b=>{
+    if(!b.start) return;
+    const [d,t='']=b.start.split('T'); const ic=TYPES[b.type]?.[0]||'📄';
+    const stay=STAY.has(b.type);
+    const label = b.type==='car'?'Pick-up: ':stay?'Check-in: ':'';
+    const bits=[b.place, b.ref?('Ref '+b.ref):''];
+    if(!stay&&b.end) bits.push('until '+b.end.split('T')[1]);
+    ev.push({date:d,time:t,icon:ic,title:label+b.title,sub:bits.filter(Boolean).join(' · '),place:b.place,type:b.type,src:'booking',id:b.id});
+    if(stay&&b.end){ const [d2,t2='']=b.end.split('T'); ev.push({date:d2,time:t2,icon:ic,title:(b.type==='car'?'Drop-off: ':'Check-out: ')+b.title,sub:b.place||'',place:b.place,type:b.type,src:'booking',id:b.id}); }
+  });
+  return ev.sort((a,b)=>(a.date+(a.time||'99:99')).localeCompare(b.date+(b.time||'99:99')));
+}
+const mapUrl = p => 'https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(p);
+const mapLink = p => p ? `<a class="map" href="${mapUrl(p)}" target="_blank" rel="noopener">🗺️ Map</a>` : '';
+const nearLink = p => p ? `<a class="map" href="#" data-nearby="${esc(p)}">📍 Nearby</a>` : '';
+const evHTML = e => `<div class="ev" data-src="${e.src}" data-id="${e.id}"><div class="t">${esc(e.time||'')}</div><div class="b"><div class="n">${e.icon} ${esc(e.title)}</div>${e.sub?`<div class="s">${esc(e.sub)}</div>`:''}${e.place?`<div class="s">${mapLink(e.place)} ${nearLink(e.place)}</div>`:''}</div></div>`;
+const dayLabel = d => trip.start ? `Day ${diff(trip.start,d)+1}` : '';
+
+/* ---------- views ---------- */
+function render(){
+  document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.t===tab));
+  $('#ttl').innerHTML = esc(trip.name) + (trip.final?'<span class="badge">✅ Final</span>':'<span class="badge warn">Draft</span>');
+  $('#tsub').textContent = trip.start ? `${fmtDate(trip.start)} → ${trip.end?fmtDate(trip.end):'?'}` : 'Set your trip dates in More';
+  $('#fab').style.display = (tab==='plan'||tab==='book'||tab==='exp') ? 'block':'none';
+  ({home:viewHome,plan:viewPlan,book:viewBook,exp:viewExp,more:viewMore})[tab]();
+}
+
+function viewHome(){
+  const ev=events(), t=today(), tm=addDays(t,1), m=$('#main');
+  let hero='';
+  if(trip.start){
+    const toStart=diff(t,trip.start);
+    if(toStart>0) hero=`<b>${toStart} day${toStart>1?'s':''} to go</b><span class="sub">Trip starts ${fmtLong(trip.start)}</span>`;
+    else if(!trip.end||t<=trip.end) hero=`<b>Day ${-toStart+1}${trip.end?' of '+(diff(trip.start,trip.end)+1):''}</b><span class="sub">${fmtLong(t)}</span>`;
+    else hero=`<b>Trip complete 🎉</b><span class="sub">Hope it was wonderful</span>`;
+  } else hero=`<b>Welcome</b><span class="sub">Open More → set your trip name and dates</span>`;
+  let html=`<div class="card hero">${hero}</div>`;
+  const td=ev.filter(e=>e.date===t), tmw=ev.filter(e=>e.date===tm);
+  html+=`<div class="card"><h2>Today · ${fmtDate(t)}</h2>${td.length?td.map(evHTML).join(''):'<div class="empty">Nothing planned today.</div>'}</div>`;
+  html+=`<div class="card"><h2>Tomorrow · ${fmtDate(tm)} ${dayLabel(tm)}</h2>${tmw.length?tmw.map(evHTML).join(''):'<div class="empty">Nothing planned tomorrow.</div>'}</div>`;
+  if(!td.length&&!tmw.length){
+    const next=ev.find(e=>e.date>tm);
+    if(next){ const nd=ev.filter(e=>e.date===next.date); html+=`<div class="card"><h2>Next up · ${fmtDate(next.date)} ${dayLabel(next.date)}</h2>${nd.map(evHTML).join('')}</div>`; }
+  }
+  m.innerHTML=html;
+}
+
+function viewPlan0(){
+  const ev=events(), m=$('#main');
+  if(!ev.length){ m.innerHTML='<div class="card"><div class="empty">No plans yet. Tap + to add an activity. Bookings with a date appear here automatically.</div></div>'; return; }
+  const days=[...new Set(ev.map(e=>e.date))]; const t=today();
+  m.innerHTML = (trip.final?'':'<div class="hint" style="margin:0 2px 4px">Draft: mark it final in More when you are done planning.</div>') +
+    days.map(d=>`<div class="day">${fmtDate(d)} <small>${dayLabel(d)}${d===t?' · today':''}</small></div><div class="card">${ev.filter(e=>e.date===d).map(evHTML).join('')}</div>`).join('');
+}
+
+function viewPlan(){
+  viewPlan0();
+  if(!events().length) return;
+  $('#main').insertAdjacentHTML('afterbegin','<div class="tb"><button class="btn alt" id="tbCal">📅 Calendar</button><button class="btn alt" id="tbShare">📤 Share</button><button class="btn alt" id="tbPrint">🖨️ PDF</button></div>');
+  $('#tbCal').onclick=calForm; $('#tbShare').onclick=sharePlan; $('#tbPrint').onclick=printPlan;
+}
+
+function viewBook0(){
+  const m=$('#main');
+  if(!bookings.length){ m.innerHTML='<div class="card"><div class="empty">No bookings yet. Tap + to add a flight, hotel, Airbnb or any document.</div></div>'; return; }
+  const sorted=[...bookings].sort((a,b)=>(a.start||'9').localeCompare(b.start||'9'));
+  m.innerHTML = sorted.map(b=>{
+    const fc=files.filter(f=>f.bookingId===b.id).length;
+    return `<div class="card ev" data-src="booking" data-id="${b.id}" style="display:block"><div class="n">${TYPES[b.type]?.[0]||'📄'} ${esc(b.title)}</div>
+    <div class="s">${[fmtDT(b.start),b.place].filter(Boolean).map(esc).join(' · ')}</div>
+    <div class="s">${b.ref?`<span class="ref">${esc(b.ref)}</span> `:''}${fc?`📎 ${fc} file${fc>1?'s':''} `:''}${mapLink(b.place)} ${nearLink(b.place)}</div></div>`;}).join('');
+}
+
+function viewBook(){
+  viewBook0();
+  $('#main').insertAdjacentHTML('afterbegin','<button class="btn alt" id="pasteBtn" style="margin:0 0 12px">📋 Add from pasted confirmation</button>');
+  $('#pasteBtn').onclick=pasteForm;
+}
+
+function viewMore(){
+  $('#main').innerHTML=`
+  <div class="card"><h2>Trip</h2>
+    <label>Trip name</label><input id="tn" value="${esc(trip.name)}">
+    <div class="row"><div><label>Start date</label><input type="date" id="ts" value="${trip.start}"></div><div><label>End date</label><input type="date" id="te" value="${trip.end}"></div></div>
+    <label style="display:flex;gap:8px;align-items:center;color:var(--ink);font-size:16px"><input type="checkbox" id="tf" style="width:auto" ${trip.final?'checked':''}> Itinerary is final</label>
+    <button class="btn" id="saveTrip">Save trip</button></div>
+  <div class="card"><h2>Country quick facts</h2><select id="cSel"><option value="">Choose a country…</option>${Object.keys(COUNTRY).map(c=>`<option ${trip.country===c?'selected':''}>${c}</option>`).join('')}</select><div id="cFacts" style="margin-top:8px"></div></div>
+  <div class="card"><h2>App lock</h2><div class="hint">${pinRec?'A PIN is set. The app locks when opened and after a minute in the background.':'Set a PIN so nobody can open your bookings if they pick up your phone.'}</div>
+    <button class="btn alt" id="pinSet">${pinRec?'Change PIN':'Set PIN'}</button>${pinRec?'<button class="btn del" id="pinOff">Remove PIN</button>':''}
+    <div class="hint" style="margin-top:8px">This is a screen lock, not encryption. If you forget the PIN you would have to clear this site's data in your browser settings and restore from a backup.</div></div>
+  <div class="card"><h2>Backup</h2><div class="hint">Everything lives only on this phone. Export a backup file now and then, and keep it in Drive, iCloud or email.</div>
+    <button class="btn alt" id="exp">Export backup</button>
+    <button class="btn alt" id="imp">Import backup</button><input type="file" id="impf" accept="application/json" hidden>
+    <button class="btn del" id="wipe">Delete everything</button></div>
+  <div class="card"><h2>Tips</h2><div class="hint">Add it to your home screen (Share → Add to Home Screen on iPhone, menu → Install app on Android). After the first load it works fully offline, even in airplane mode.</div></div>`;
+  $('#saveTrip').onclick=async()=>{ trip={...trip,k:'trip',name:$('#tn').value.trim()||'My Trip',start:$('#ts').value,end:$('#te').value,final:$('#tf').checked}; await put('meta',trip); render(); };
+  $('#exp').onclick=exportBackup;
+  $('#pinSet').onclick=pinForm; bindCountry(); if(pinRec) $('#pinOff').onclick=pinOff;
+  $('#imp').onclick=()=>$('#impf').click();
+  $('#impf').onchange=e=>importBackup(e.target.files[0]);
+  $('#wipe').onclick=async()=>{ if(confirm('Delete all trips, bookings and files from this phone?')&&confirm('This cannot be undone. Sure?')){ await clearAll(); trip={k:'trip',name:'My Trip',start:'',end:'',final:false}; await load(); render(); } };
+}
+
+/* ---------- sheet / forms ---------- */
+const sheet = (html) => { $('#sheetIn').innerHTML=html; $('#sheet').classList.add('open'); };
+const closeSheet = () => { $('#sheet').classList.remove('open'); $('#sheetIn').innerHTML=''; };
+$('#sheet').addEventListener('click',e=>{ if(e.target.id==='sheet') closeSheet(); });
+
+function itemForm(id){
+  const i = items.find(x=>x.id===id) || {date:(trip.start&&trip.start>today())?trip.start:today(),time:'',title:'',place:'',notes:''};
+  sheet(`<h3>${id?'Edit':'Add'} activity</h3>
+  <label>Title</label><input id="f_title" value="${esc(i.title)}" placeholder="e.g. Sagrada Família tour">
+  <div class="row"><div><label>Date</label><input type="date" id="f_date" value="${i.date}"></div><div><label>Time</label><input type="time" id="f_time" value="${i.time}"></div></div>
+  <label>Place / address</label><input id="f_place" value="${esc(i.place)}">
+  <label>Notes</label><textarea id="f_notes">${esc(i.notes)}</textarea>
+  <button class="btn" id="f_save">Save</button><button class="btn alt" id="f_cancel">Cancel</button>${id?'<button class="btn del" id="f_del">Delete</button>':''}`);
+  $('#f_cancel').onclick=closeSheet;
+  $('#f_save').onclick=async()=>{ const title=$('#f_title').value.trim(); if(!title||!$('#f_date').value){alert('Please add a title and date.');return;}
+    await put('items',{id:id||uid(),title,date:$('#f_date').value,time:$('#f_time').value,place:$('#f_place').value.trim(),notes:$('#f_notes').value.trim()});
+    await load(); closeSheet(); render(); };
+  if(id) $('#f_del').onclick=async()=>{ if(confirm('Delete this activity?')){ await del('items',id); await load(); closeSheet(); render(); } };
+}
+
+function bookingForm(id,pre){
+  const b = bookings.find(x=>x.id===id) || Object.assign({type:'flight',title:'',ref:'',start:'',end:'',place:'',notes:''},pre||{});
+  let pending=[], removed=new Set();
+  const existing = files.filter(f=>f.bookingId===id);
+  const draw=()=>{
+    const list = existing.filter(f=>!removed.has(f.id)).map(f=>`<div class="file"><a href="#" data-open="${f.id}">📎 ${esc(f.name)}</a><button data-rm="${f.id}">✕</button></div>`).join('')
+      + pending.map((f,ix)=>`<div class="file"><span class="nm">🆕 ${esc(f.name)}</span><button data-rmp="${ix}">✕</button></div>`).join('');
+    $('#flist').innerHTML=list||'<div class="hint">No files attached.</div>';
+    $('#flist').querySelectorAll('[data-open]').forEach(a=>a.onclick=e=>{e.preventDefault();openFile(a.dataset.open);});
+    $('#flist').querySelectorAll('[data-rm]').forEach(x=>x.onclick=()=>{removed.add(x.dataset.rm);draw();});
+    $('#flist').querySelectorAll('[data-rmp]').forEach(x=>x.onclick=()=>{pending.splice(+x.dataset.rmp,1);draw();});
+  };
+  sheet(`<h3>${id?'Edit':'Add'} booking</h3>
+  <label>Type</label><select id="f_type">${Object.entries(TYPES).map(([k,v])=>`<option value="${k}" ${k===b.type?'selected':''}>${v[0]} ${v[1]}</option>`).join('')}</select>
+  <label>Title</label><input id="f_title" value="${esc(b.title)}" placeholder="e.g. AI 123 Mumbai → Madrid">
+  <label>Confirmation / PNR / booking ref</label><input id="f_ref" value="${esc(b.ref)}">
+  <div class="row"><div><label>Starts (departure / check-in)</label><input type="datetime-local" id="f_start" value="${b.start}"></div><div><label>Ends (arrival / check-out)</label><input type="datetime-local" id="f_end" value="${b.end}"></div></div>
+  <label>Address / airport / place</label><input id="f_place" value="${esc(b.place)}">
+  <label>Notes</label><textarea id="f_notes">${esc(b.notes)}</textarea>
+  <label>Documents (tickets, vouchers, PDFs, screenshots)</label>
+  <div id="flist"></div>
+  <button class="btn alt" id="addf">+ Attach files</button><input type="file" id="fin" multiple accept="application/pdf,image/*,.pdf,.doc,.docx" hidden>
+  <button class="btn" id="f_save">Save</button><button class="btn alt" id="f_cancel">Cancel</button>${id?'<button class="btn del" id="f_del">Delete booking</button>':''}`);
+  draw();
+  $('#addf').onclick=()=>$('#fin').click();
+  $('#fin').onchange=e=>{ pending.push(...e.target.files); draw(); };
+  $('#f_cancel').onclick=closeSheet;
+  $('#f_save').onclick=async()=>{
+    const title=$('#f_title').value.trim(); if(!title){alert('Please add a title.');return;}
+    const bid=id||uid();
+    await put('bookings',{id:bid,type:$('#f_type').value,title,ref:$('#f_ref').value.trim(),start:$('#f_start').value,end:$('#f_end').value,place:$('#f_place').value.trim(),notes:$('#f_notes').value.trim()});
+    for(const fid of removed) await del('files',fid);
+    for(const f of pending) await put('files',{id:uid(),bookingId:bid,name:f.name,type:f.type,blob:f});
+    await load(); closeSheet(); render();
+  };
+  if(id) $('#f_del').onclick=async()=>{ if(!confirm('Delete this booking and its files?')) return;
+    for(const f of files.filter(f=>f.bookingId===id)) await del('files',f.id);
+    await del('bookings',id); await load(); closeSheet(); render(); };
+}
+
+async function openFile(fid){
+  const f = files.find(x=>x.id===fid); if(!f) return;
+  const url = URL.createObjectURL(f.blob);
+  const a=document.createElement('a'); a.href=url; a.target='_blank'; a.rel='noopener'; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),60000);
+}
+
+/* ---------- nearby ---------- */
+function nearby(place){
+  const cats=[['🍽️','Restaurants'],['☕','Cafés'],['🏧','ATMs'],['💊','Pharmacies'],['🛒','Supermarkets'],['🚇','Public transport'],['⛽','Petrol stations'],['🅿️','Parking']];
+  sheet(`<h3>Near this place</h3><div class="hint">${esc(place)}</div><div style="margin-top:8px">${cats.map(([i,n])=>`<div class="file"><a href="${mapUrl(n.toLowerCase()+' near '+place)}" target="_blank" rel="noopener">${i} ${n}</a></div>`).join('')}</div><div class="hint" style="margin-top:8px">Opens your maps app. Needs internet.</div><button class="btn alt" id="nbx">Close</button>`);
+  $('#nbx').onclick=closeSheet;
+}
+
+/* ---------- calendar file (.ics) with reminders ---------- */
+const icsEsc=t=>String(t??'').replace(/\\/g,'\\\\').replace(/;/g,'\;').replace(/,/g,'\\,').replace(/\r?\n/g,'\\n');
+const icsDT=(d,t)=>d.replace(/-/g,'')+'T'+t.replace(':','')+'00';
+const plusMin=(d,t,m)=>{ const x=new Date(`${d}T${t}:00`); x.setMinutes(x.getMinutes()+m); return [ymd(x),`${pad(x.getHours())}:${pad(x.getMinutes())}`]; };
+function buildIcs(withPreview){
+  const stamp=new Date().toISOString().replace(/[-:]/g,'').replace(/\.\d+/,'');
+  const L=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Trip Keeper//EN','CALSCALE:GREGORIAN','METHOD:PUBLISH','X-WR-CALNAME:'+icsEsc(trip.name)];
+  const alarm=(m,txt)=>['BEGIN:VALARM','ACTION:DISPLAY','DESCRIPTION:'+icsEsc(txt),'TRIGGER:-PT'+m+'M','END:VALARM'];
+  const ev=events(); let n=0;
+  ev.forEach(e=>{
+    L.push('BEGIN:VEVENT',`UID:tk-${e.id}-${n++}@tripkeeper`,'DTSTAMP:'+stamp);
+    if(e.time){ const [d2,t2]=plusMin(e.date,e.time,60); L.push('DTSTART:'+icsDT(e.date,e.time),'DTEND:'+icsDT(d2,t2)); }
+    else L.push('DTSTART;VALUE=DATE:'+e.date.replace(/-/g,''),'DTEND;VALUE=DATE:'+addDays(e.date,1).replace(/-/g,''));
+    L.push('SUMMARY:'+icsEsc(`${e.icon} ${e.title}`));
+    if(e.place) L.push('LOCATION:'+icsEsc(e.place));
+    if(e.sub) L.push('DESCRIPTION:'+icsEsc(e.sub));
+    if(e.time){ if(e.type==='flight') L.push(...alarm(1440,'Flight tomorrow: check in online and pack'),...alarm(180,'Time to head to the airport')); else L.push(...alarm(60,e.title)); }
+    L.push('END:VEVENT');
+  });
+  if(withPreview){
+    [...new Set(ev.map(e=>e.date))].forEach(d=>{
+      const prev=addDays(d,-1); if(prev<today()) return;
+      const day=ev.filter(e=>e.date===d);
+      L.push('BEGIN:VEVENT',`UID:tk-preview-${d}@tripkeeper`,'DTSTAMP:'+stamp,'DTSTART:'+icsDT(prev,'20:00'),'DTEND:'+icsDT(prev,'20:15'),
+        'SUMMARY:'+icsEsc(`Tomorrow's plan (${dayLabel(d)||fmtDate(d)})`),'DESCRIPTION:'+icsEsc(day.map(e=>`${e.time?e.time+' ':''}${e.title}`).join('\n')),
+        ...alarm(0,`Tomorrow: ${day.length} thing${day.length>1?'s':''} planned`),'END:VEVENT');
+    });
+  }
+  L.push('END:VCALENDAR'); return L.join('\r\n')+'\r\n';
+}
+function calForm(){
+  sheet(`<h3>Add to phone calendar</h3><div class="hint">Makes a calendar file with every dated stop and booking. Opening it adds them to your calendar app with reminders: flights 1 day and 3 hours before, everything else 1 hour before. Times are added as local times.</div>
+  <label style="display:flex;gap:8px;align-items:center;color:var(--ink);font-size:16px;margin-top:12px"><input type="checkbox" id="c_prev" style="width:auto" checked> 8 PM reminder with tomorrow's plan</label>
+  <button class="btn" id="c_go">Download calendar file</button><button class="btn alt" id="c_x">Cancel</button>`);
+  $('#c_x').onclick=closeSheet;
+  $('#c_go').onclick=()=>{ const blob=new Blob([buildIcs($('#c_prev').checked)],{type:'text/calendar'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`${trip.name.replace(/\W+/g,'-')}.ics`; document.body.appendChild(a); a.click(); a.remove(); closeSheet(); };
+}
+
+/* ---------- share / print ---------- */
+function planText(){
+  const ev=events(); let out=`${trip.name}${trip.start?' · '+fmtDate(trip.start)+(trip.end?' to '+fmtDate(trip.end):''):''}\n`;
+  [...new Set(ev.map(e=>e.date))].forEach(d=>{
+    out+=`\n${fmtDate(d)}${dayLabel(d)?' ('+dayLabel(d)+')':''}\n`;
+    ev.filter(e=>e.date===d).forEach(e=>{ out+=`• ${e.time?e.time+' ':''}${e.icon} ${e.title}${e.place?' — '+e.place:''}\n`; });
+  });
+  return out.trim();
+}
+async function sharePlan(){
+  const text=planText();
+  if(navigator.share){ try{ await navigator.share({title:trip.name,text}); return; }catch(e){ if(e&&e.name==='AbortError') return; } }
+  try{ await navigator.clipboard.writeText(text); alert('Itinerary copied. Paste it into WhatsApp or email.'); }
+  catch(_){ sheet(`<h3>Itinerary</h3><textarea id="sharetxt" style="min-height:240px">${esc(text)}</textarea><button class="btn alt" id="sx">Close</button>`); $('#sx').onclick=closeSheet; }
+}
+function printPlan(){ tab='plan'; render(); window.print(); }
+
+/* ---------- country quick facts (offline reference) ---------- */
+const COUNTRY={
+  'Australia':{plug:'I',v:'230V',cur:'AUD',sos:'000',drive:'left'},
+  'Austria':{plug:'C / F',v:'230V',cur:'EUR',sos:'112',drive:'right'},
+  'Croatia':{plug:'C / F',v:'230V',cur:'EUR',sos:'112',drive:'right'},
+  'Czechia':{plug:'C / E',v:'230V',cur:'CZK',sos:'112',drive:'right'},
+  'France':{plug:'C / E',v:'230V',cur:'EUR',sos:'112',drive:'right'},
+  'Germany':{plug:'C / F',v:'230V',cur:'EUR',sos:'112',drive:'right'},
+  'Greece':{plug:'C / F',v:'230V',cur:'EUR',sos:'112',drive:'right'},
+  'India':{plug:'C / D / M',v:'230V',cur:'INR',sos:'112',drive:'left'},
+  'Indonesia':{plug:'C / F',v:'230V',cur:'IDR',sos:'112',drive:'left'},
+  'Ireland':{plug:'G',v:'230V',cur:'EUR',sos:'112 or 999',drive:'left'},
+  'Italy':{plug:'C / F / L',v:'230V',cur:'EUR',sos:'112',drive:'right'},
+  'Japan':{plug:'A / B',v:'100V',cur:'JPY',sos:'110 police, 119 fire and ambulance',drive:'left'},
+  'Netherlands':{plug:'C / F',v:'230V',cur:'EUR',sos:'112',drive:'right'},
+  'Portugal':{plug:'C / F',v:'230V',cur:'EUR',sos:'112',drive:'right'},
+  'Singapore':{plug:'G',v:'230V',cur:'SGD',sos:'999 police, 995 ambulance',drive:'left'},
+  'Spain':{plug:'C / F',v:'230V',cur:'EUR',sos:'112',drive:'right'},
+  'Switzerland':{plug:'C / J',v:'230V',cur:'CHF',sos:'112 (police 117, ambulance 144)',drive:'right'},
+  'Thailand':{plug:'A / B / C / F / O',v:'230V',cur:'THB',sos:'191 police, 1669 medical, 1155 tourist police',drive:'left'},
+  'Turkey':{plug:'C / F',v:'230V',cur:'TRY',sos:'112',drive:'right'},
+  'United Arab Emirates':{plug:'G (also C / D)',v:'230V',cur:'AED',sos:'999 police, 998 ambulance',drive:'right'},
+  'United Kingdom':{plug:'G',v:'230V',cur:'GBP',sos:'999 or 112',drive:'left'},
+  'United States':{plug:'A / B',v:'120V',cur:'USD',sos:'911',drive:'right'},
+  'Vietnam':{plug:'A / C / F',v:'220V',cur:'VND',sos:'113 police, 115 ambulance',drive:'right'}
+};
+function bindCountry(){
+  const sel=$('#cSel'); if(!sel) return;
+  const show=()=>{ const c=COUNTRY[sel.value];
+    $('#cFacts').innerHTML=c?`<div class="s">⚡ Plug type: <b>${c.plug}</b> · ${c.v}</div><div class="s">💱 Currency: <b>${c.cur}</b></div><div class="s">🚨 Emergency: <b>${c.sos}</b></div><div class="s">🚗 Drives on the <b>${c.drive}</b></div><div class="hint" style="margin-top:6px">General reference, so double-check close to travel.</div>`:''; };
+  sel.onchange=async()=>{ trip={...trip,k:'trip',country:sel.value}; await put('meta',trip); show(); };
+  show();
+}
+
+/* ---------- expenses ---------- */
+const CATS={food:['🍽️','Food & drink'],transport:['🚕','Transport'],fuel:['⛽','Fuel & tolls'],stay:['🏨','Stay'],sights:['🎟️','Sightseeing'],shop:['🛍️','Shopping'],other:['💸','Other']};
+const home=()=>(trip.home||'INR').toUpperCase();
+const rateOf=c=>c===home()?1:((trip.rates||{})[c]||0);
+const toHome=e=>{ const r=rateOf(e.currency); return r?e.amount*r:null; };
+const money=(n,c)=>{ try{ return new Intl.NumberFormat('en-IN',{style:'currency',currency:c,maximumFractionDigits:2}).format(n); }catch(_){ return c+' '+n.toFixed(2); } };
+
+function viewExp(){
+  const m=$('#main'), H=home();
+  const conv=expenses.map(e=>({e,h:toHome(e)}));
+  const total=conv.reduce((a,x)=>a+(x.h||0),0);
+  const missing=[...new Set(conv.filter(x=>x.h===null).map(x=>x.e.currency))];
+  const bud=+trip.budget||0;
+  let html=`<div class="card hero"><span class="sub">Total spent</span><b>${money(total,H)}</b>`;
+  if(bud){
+    const pct=Math.min(100,Math.round(total/bud*100));
+    html+=`<div style="position:relative;height:8px;border-radius:99px;overflow:hidden;margin:8px 0"><div style="position:absolute;inset:0;background:currentColor;opacity:.25"></div><div style="position:absolute;left:0;top:0;bottom:0;width:${pct}%;background:currentColor"></div></div><span class="sub">${total>bud?'Over budget by '+money(total-bud,H):money(bud-total,H)+' left of '+money(bud,H)}</span>`;
+  }
+  if(trip.start&&expenses.length&&today()>=trip.start){
+    const days=Math.max(1,Math.min(diff(trip.start,today()),trip.end?diff(trip.start,trip.end):1e9)+1);
+    html+=`<div class="sub">About ${money(total/days,H)} per day so far</div>`;
+  }
+  html+='</div>';
+  if(missing.length) html+=`<div class="card"><span class="badge warn">⚠️ No rate for ${esc(missing.join(', '))}</span><div class="hint" style="margin-top:6px">Set it in Budget &amp; rates so the totals include these.</div></div>`;
+  const by={}; conv.forEach(x=>{ if(x.h!==null) by[x.e.cat]=(by[x.e.cat]||0)+x.h; });
+  const rows=Object.entries(by).sort((a,b)=>b[1]-a[1]);
+  if(rows.length) html+=`<div class="card"><h2>By category</h2>${rows.map(([k,v])=>`<div style="padding:7px 0"><div style="display:flex;justify-content:space-between"><span>${CATS[k]?.[0]||'💸'} ${esc(CATS[k]?.[1]||'Other')}</span><b>${money(v,H)}</b></div><div style="height:5px;border-radius:9px;background:var(--soft);margin-top:5px"><div style="height:5px;border-radius:9px;background:var(--brand);width:${total?Math.round(v/total*100):0}%"></div></div></div>`).join('')}</div>`;
+  const cur={}; expenses.forEach(e=>cur[e.currency]=(cur[e.currency]||0)+e.amount);
+  if(Object.keys(cur).some(c=>c!==H)) html+=`<div class="card"><h2>Paid in</h2>${Object.entries(cur).map(([c,v])=>`<div style="display:flex;justify-content:space-between;padding:4px 0"><span>${esc(c)}</span><b>${money(v,c)}</b></div>`).join('')}</div>`;
+  const days=[...new Set(expenses.map(e=>e.date))].sort().reverse();
+  html+=days.map(d=>{
+    const list=expenses.filter(e=>e.date===d), sum=list.reduce((a,e)=>a+(toHome(e)||0),0);
+    return `<div class="day">${fmtDate(d)} <small>${dayLabel(d)} · ${money(sum,H)}</small></div><div class="card">${list.map(e=>{ const h=toHome(e);
+      return `<div class="ev" data-exp="${e.id}"><div class="b"><div class="n">${CATS[e.cat]?.[0]||'💸'} ${esc(e.desc||CATS[e.cat]?.[1]||'Expense')}</div><div class="s">${esc(CATS[e.cat]?.[1]||'')}</div></div><div style="text-align:right"><b>${money(e.amount,e.currency)}</b>${e.currency!==H&&h!==null?`<div class="s">${money(h,H)}</div>`:''}</div></div>`; }).join('')}</div>`;
+  }).join('');
+  if(!expenses.length) html+='<div class="card"><div class="empty">No expenses yet. Tap + to log one.</div></div>';
+  html+='<button class="btn alt" id="expSet">Budget &amp; rates</button><button class="btn alt" id="expCsv">Export CSV</button>';
+  m.innerHTML=html;
+  $('#expSet').onclick=expSettings; $('#expCsv').onclick=expCsv;
+  m.querySelectorAll('[data-exp]').forEach(el=>el.onclick=()=>expForm(el.dataset.exp));
+}
+
+function expForm(id){
+  const x=expenses.find(e=>e.id===id)||{date:today(),amount:'',currency:trip.lastCur||home(),cat:'food',desc:''};
+  sheet(`<h3>${id?'Edit':'Add'} expense</h3>
+  <div class="row"><div><label>Amount</label><input id="x_amt" type="number" inputmode="decimal" step="0.01" value="${x.amount}"></div>
+  <div><label>Currency</label><input id="x_cur" value="${esc(x.currency)}" maxlength="3" style="text-transform:uppercase" list="curs"><datalist id="curs"><option>INR</option><option>EUR</option><option>USD</option><option>GBP</option></datalist></div></div>
+  <div id="x_rw"></div>
+  <label>What for</label><input id="x_desc" value="${esc(x.desc)}" placeholder="e.g. Lunch at the market">
+  <div class="row"><div><label>Category</label><select id="x_cat">${Object.entries(CATS).map(([k,v])=>`<option value="${k}" ${k===x.cat?'selected':''}>${v[0]} ${v[1]}</option>`).join('')}</select></div>
+  <div><label>Date</label><input id="x_date" type="date" value="${x.date}"></div></div>
+  <button class="btn" id="x_save">Save</button><button class="btn alt" id="x_cancel">Cancel</button>${id?'<button class="btn del" id="x_del">Delete</button>':''}`);
+  const cur=()=>$('#x_cur').value.trim().toUpperCase();
+  const drawRate=()=>{ const c=cur(); $('#x_rw').innerHTML=(c.length===3&&c!==home())?`<label>1 ${esc(c)} = how many ${esc(home())}? (applies to all ${esc(c)} expenses)</label><input id="x_rate" type="number" inputmode="decimal" step="0.0001" value="${rateOf(c)||''}">`:''; };
+  drawRate(); $('#x_cur').oninput=drawRate;
+  $('#x_cancel').onclick=closeSheet;
+  $('#x_save').onclick=async()=>{
+    const amt=parseFloat($('#x_amt').value), c=cur();
+    if(!(amt>0)){ alert('Enter an amount.'); return; }
+    if(!/^[A-Z]{3}$/.test(c)){ alert('Use a 3-letter currency code, like EUR.'); return; }
+    if(!$('#x_date').value){ alert('Pick a date.'); return; }
+    if(c!==home()){ const r=parseFloat($('#x_rate')?.value); if(r>0) trip.rates={...(trip.rates||{}),[c]:r}; }
+    trip.lastCur=c; trip.k='trip'; await put('meta',trip);
+    await put('expenses',{id:id||uid(),date:$('#x_date').value,amount:amt,currency:c,cat:$('#x_cat').value,desc:$('#x_desc').value.trim()});
+    await load(); closeSheet(); render();
+  };
+  if(id) $('#x_del').onclick=async()=>{ if(confirm('Delete this expense?')){ await del('expenses',id); await load(); closeSheet(); render(); } };
+}
+
+function expSettings(){
+  const used=[...new Set([...expenses.map(e=>e.currency),...Object.keys(trip.rates||{})])].filter(c=>c!==home());
+  sheet(`<h3>Budget &amp; rates</h3>
+  <div class="row"><div><label>Home currency</label><input id="s_home" value="${esc(home())}" maxlength="3" style="text-transform:uppercase"></div>
+  <div><label>Trip budget (${esc(home())})</label><input id="s_bud" type="number" inputmode="decimal" value="${trip.budget||''}"></div></div>
+  ${used.length?`<label>Exchange rates: 1 unit = how many ${esc(home())}?</label>`+used.map(c=>`<div class="row" style="align-items:center"><div style="flex:0 0 60px"><b>${esc(c)}</b></div><input data-r="${esc(c)}" type="number" inputmode="decimal" step="0.0001" value="${rateOf(c)||''}"></div>`).join(''):'<div class="hint" style="margin-top:8px">Rates for other currencies show up here once you log an expense in them.</div>'}
+  <div class="hint" style="margin-top:8px">Changing the home currency clears saved rates, since they are relative to it.</div>
+  <button class="btn" id="s_save">Save</button><button class="btn alt" id="s_cancel">Cancel</button>`);
+  $('#s_cancel').onclick=closeSheet;
+  $('#s_save').onclick=async()=>{
+    const h=$('#s_home').value.trim().toUpperCase(); if(!/^[A-Z]{3}$/.test(h)){ alert('Use a 3-letter currency code.'); return; }
+    let rates={...(trip.rates||{})}; if(h!==home()) rates={};
+    document.querySelectorAll('[data-r]').forEach(i=>{ const r=parseFloat(i.value); if(h===home()&&r>0) rates[i.dataset.r]=r; });
+    trip={...trip,k:'trip',home:h,budget:parseFloat($('#s_bud').value)||0,rates}; await put('meta',trip); closeSheet(); render();
+  };
+}
+
+function expCsv(){
+  const q=v=>'"'+String(v??'').replace(/"/g,'""')+'"';
+  const rows=[['Date','Category','Description','Amount','Currency','Rate to '+home(),'Amount in '+home()]];
+  [...expenses].sort((a,b)=>a.date.localeCompare(b.date)).forEach(e=>{ const h=toHome(e); rows.push([e.date,CATS[e.cat]?.[1]||'Other',e.desc,e.amount,e.currency,rateOf(e.currency)||'',h===null?'':h.toFixed(2)]); });
+  const blob=new Blob([rows.map(r=>r.map(q).join(',')).join('\n')],{type:'text/csv'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`${trip.name.replace(/\W+/g,'-')}-expenses.csv`; document.body.appendChild(a); a.click(); a.remove();
+}
+
+/* ---------- paste a confirmation ---------- */
+/*PARSE_START*/
+const MON={jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12};
+function parsePaste(txt){
+  const t=txt.replace(/\r/g,''), low=t.toLowerCase(), b={};
+  b.type = /airbnb/.test(low)?'airbnb'
+    : /(\bpnr\b|boarding pass|airline|\bflight\b|e-?ticket)/.test(low)?'flight'
+    : /(car rental|rental car|hertz|avis|europcar|sixt|drop-?off)/.test(low)?'car'
+    : /(\btrain\b|renfe|\brail\b|\bbus\b)/.test(low)?'train'
+    : /(check-?in|hotel|resort|booking\.com|\bstay\b)/.test(low)?'hotel'
+    : /(admission|\btour\b|\bentry\b|\bticket)/.test(low)?'activity':'other';
+  for(const m of t.matchAll(/(?:confirmation|booking|reservation|reference|PNR|itinerary|order)(?:[ \t]*(?:number|no\.?|code|id|reference|ref|#))?[ \t]*[:#-]?[ \t]*([A-Z0-9][A-Z0-9-]{4,15})/gi)){
+    const x=m[1]; if(/\d/.test(x)||x===x.toUpperCase()){ b.ref=x; break; }
+  }
+  const found=[]; const add=(i,y,mo,d)=>{ if(mo>=1&&mo<=12&&d>=1&&d<=31) found.push({i,date:`${y}-${pad(mo)}-${pad(d)}`}); };
+  const MM='jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec';
+  for(const m of t.matchAll(/(\d{4})-(\d{2})-(\d{2})/g)) add(m.index,m[1],+m[2],+m[3]);
+  for(const m of t.matchAll(new RegExp('(\\d{1,2})(?:st|nd|rd|th)?[\\s-]+('+MM+')[a-z]*\\.?,?\\s+(\\d{4})','gi'))) add(m.index,m[3],MON[m[2].toLowerCase()],+m[1]);
+  for(const m of t.matchAll(new RegExp('('+MM+')[a-z]*\\.?\\s+(\\d{1,2})(?:st|nd|rd|th)?,?\\s+(\\d{4})','gi'))) add(m.index,m[3],MON[m[1].toLowerCase()],+m[2]);
+  for(const m of t.matchAll(/(\d{1,2})[\/.](\d{1,2})[\/.](\d{4})/g)) add(m.index,m[3],+m[2],+m[1]);
+  found.sort((a,b)=>a.i-b.i);
+  const timeNear=i=>{ const ls=t.lastIndexOf('\n',i)+1; let le=t.indexOf('\n',i); if(le<0) le=t.length; const rx=/(\d{1,2}):(\d{2})\s*(am|pm)?/i; const m=t.slice(i,le).match(rx)||t.slice(ls,le).match(rx); if(!m) return '12:00';
+    let h=+m[1]; const ap=(m[3]||'').toLowerCase(); if(ap==='pm'&&h<12) h+=12; if(ap==='am'&&h===12) h=0; return `${pad(h)}:${m[2]}`; };
+  if(found[0]){ b.start=found[0].date+'T'+timeNear(found[0].i); const e=found.find(f=>f.i!==found[0].i&&f.date>=found[0].date); if(e) b.end=e.date+'T'+timeNear(e.i); }
+  const sub=t.match(/^subject:\s*(.+)$/im); const route=t.match(/\(([A-Z]{3})\)[^()]{0,80}\(([A-Z]{3})\)/);
+  const first=(t.split('\n').map(x=>x.trim()).find(x=>x&&x.length<=80))||'';
+  b.title=((sub&&sub[1].replace(/^((fwd?|re):\s*)+/i,''))||(b.type==='flight'&&route?`Flight ${route[1]} → ${route[2]}`:first)).slice(0,90);
+  const ad=t.match(/^(?:property )?(?:address|location)\s*:\s*(.+)$/im); if(ad) b.place=ad[1].trim();
+  return b;
+}
+/*PARSE_END*/
+
+function pasteForm(){
+  sheet(`<h3>Add from confirmation</h3><div class="hint">Paste the text of a confirmation email or booking page. I fill in what I can find (type, reference, dates, address) and you review before saving. Nothing leaves your phone. If no time is found I put 12:00, so check it.</div>
+  <label>Pasted text</label><textarea id="pt" style="min-height:170px"></textarea>
+  <button class="btn" id="pgo">Read it</button><button class="btn alt" id="pcancel">Cancel</button>`);
+  $('#pcancel').onclick=closeSheet;
+  $('#pgo').onclick=()=>{ const v=$('#pt').value.trim(); if(!v){ alert('Paste some text first.'); return; } bookingForm(undefined,parsePaste(v)); };
+}
+
+/* ---------- PIN lock ---------- */
+async function hashPin(pin,salt){
+  const s=salt+pin;
+  if(window.crypto&&crypto.subtle){ const h=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s)); return [...new Uint8Array(h)].map(x=>x.toString(16).padStart(2,'0')).join(''); }
+  let h=0; for(const c of s) h=(h*31+c.charCodeAt(0))|0; return String(h);
+}
+function showLock(){
+  if($('#lock')||!pinRec) return; closeSheet();
+  const d=document.createElement('div'); d.id='lock';
+  d.innerHTML='<div class="lk"><div style="font-size:42px">🔒</div><h3>Trip Keeper</h3><input id="lpin" type="password" inputmode="numeric" autocomplete="off" placeholder="PIN"><div id="lerr" class="hint" style="color:var(--danger);min-height:20px"></div><button class="btn" id="lgo">Unlock</button></div>';
+  document.body.appendChild(d);
+  const go=async()=>{ if(await hashPin($('#lpin').value,pinRec.salt)===pinRec.hash){ d.remove(); } else { $('#lerr').textContent='Wrong PIN'; $('#lpin').value=''; } };
+  $('#lgo').onclick=go; $('#lpin').onkeydown=e=>{ if(e.key==='Enter') go(); }; $('#lpin').focus();
+}
+function pinForm(){
+  sheet(`<h3>${pinRec?'Change':'Set'} PIN</h3>${pinRec?'<label>Current PIN</label><input id="p0" type="password" inputmode="numeric" autocomplete="off">':''}
+  <label>New PIN (4 to 8 digits)</label><input id="p1" type="password" inputmode="numeric" autocomplete="off">
+  <label>Repeat new PIN</label><input id="p2" type="password" inputmode="numeric" autocomplete="off">
+  <button class="btn" id="psave">Save PIN</button><button class="btn alt" id="pcancel">Cancel</button>`);
+  $('#pcancel').onclick=closeSheet;
+  $('#psave').onclick=async()=>{
+    if(pinRec && await hashPin($('#p0').value,pinRec.salt)!==pinRec.hash){ alert('Current PIN is wrong.'); return; }
+    const a=$('#p1').value; if(!/^\d{4,8}$/.test(a)){ alert('Use 4 to 8 digits.'); return; }
+    if(a!==$('#p2').value){ alert('PINs do not match.'); return; }
+    const salt=uid(); pinRec={k:'pin',salt,hash:await hashPin(a,salt)}; await put('meta',pinRec); closeSheet(); render();
+  };
+}
+async function pinOff(){
+  const v=prompt('Enter your current PIN to remove it'); if(v===null) return;
+  if(await hashPin(v,pinRec.salt)!==pinRec.hash){ alert('Wrong PIN.'); return; }
+  await del('meta','pin'); pinRec=null; render();
+}
+
+/* ---------- backup ---------- */
+const toDataURL = b => new Promise(r=>{const fr=new FileReader();fr.onload=()=>r(fr.result);fr.readAsDataURL(b);});
+async function exportBackup(){
+  const fs=[]; for(const f of files) fs.push({id:f.id,bookingId:f.bookingId,name:f.name,type:f.type,data:await toDataURL(f.blob)});
+  const blob=new Blob([JSON.stringify({v:1,trip,items,bookings,expenses,files:fs})],{type:'application/json'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`trip-keeper-backup-${today()}.json`; document.body.appendChild(a); a.click(); a.remove();
+}
+async function importBackup(file){
+  if(!file) return;
+  try{
+    const d=JSON.parse(await file.text()); if(!confirm('Replace everything on this phone with this backup?')) return;
+    await clearAll();
+    if(pinRec) await put('meta',pinRec);
+    await put('meta',d.trip||trip);
+    for(const i of d.items||[]) await put('items',i);
+    for(const b of d.bookings||[]) await put('bookings',b);
+    for(const x of d.expenses||[]) await put('expenses',x);
+    for(const f of d.files||[]){ const blob=await (await fetch(f.data)).blob(); await put('files',{id:f.id,bookingId:f.bookingId,name:f.name,type:f.type,blob}); }
+    await load(); render();
+  }catch(e){ alert('Could not read that backup file.'); }
+}
+
+/* ---------- wiring ---------- */
+$('#nav').addEventListener('click',e=>{ const b=e.target.closest('button'); if(b){ tab=b.dataset.t; window.scrollTo(0,0); render(); }});
+$('#fab').onclick=()=> tab==='plan'?itemForm():tab==='exp'?expForm():bookingForm();
+$('#main').addEventListener('click',e=>{ const nb=e.target.closest('[data-nearby]'); if(nb){ e.preventDefault(); nearby(nb.dataset.nearby); return; } if(e.target.closest('a')) return; const el=e.target.closest('[data-src]'); if(!el) return; el.dataset.src==='item'?itemForm(el.dataset.id):bookingForm(el.dataset.id); });
+document.addEventListener('visibilitychange',()=>{ if(document.hidden){ hiddenAt=Date.now(); return; } if(pinRec && Date.now()-hiddenAt>60000) showLock(); if(tab==='home') render(); });
+
+(async()=>{
+  db = await open(); await load(); render(); if(pinRec) showLock();
+  if(navigator.storage?.persist) navigator.storage.persist();
+  if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
+})();
+})();
+</script>
+</body>
+</html>
