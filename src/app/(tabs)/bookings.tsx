@@ -4,7 +4,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useLog, useTheme } from '../../store';
 import { handOff } from '../../handoff';
 import { notify, pickFiles } from '../../io';
-import { BOOKING_TYPE, filesOf, fmtStamp, groupBookings, nights, plural } from '../../model';
+import { BOOKING_TYPE, filesOf, groupBookings, nights, plural, whenText } from '../../model';
 import { PlaceLinks } from '../../components';
 import { Badge, Button, Card, Gap, Header, IconButton, Row, Screen, T } from '../../ui';
 import { space } from '../../theme';
@@ -44,7 +44,7 @@ export default function Bookings() {
               return (
                 <View key={b.id}>
                   <Row last={i === g.bookings.length - 1 && !b.place} left={<Badge icon={BOOKING_TYPE(b.type).icon} />} title={b.title}
-                    subtitle={[fmtStamp(b.start), stay ? plural(stay, 'night') : '', b.place, b.ref ? `Ref ${b.ref}` : '', n ? plural(n, 'file') : ''].filter(Boolean).join(' · ')}
+                    subtitle={[whenText(b), stay ? plural(stay, 'night') : '', b.place, b.ref ? `Ref ${b.ref}` : '', n ? plural(n, 'file') : ''].filter(Boolean).join(' · ')}
                     onPress={() => router.push({ pathname: '/booking', params: { id: b.id } })} />
                   {b.place ? <View style={{ paddingBottom: space.sm }}><PlaceLinks place={b.place} indent={40 + space.md} /></View> : null}
                 </View>

@@ -53,7 +53,11 @@ export interface Trip {
 /** A planned stop of your own (not a booking). */
 export interface Item { id: string; title: string; date: string; time: string; place: string; notes: string }
 /** `start` / `end` are "YYYY-MM-DDTHH:MM" local, or ''. */
-export interface Booking { id: string; type: BookingType; title: string; ref: string; start: string; end: string; place: string; notes: string }
+export interface Booking {
+  id: string; type: BookingType; title: string; ref: string; start: string; end: string; place: string; notes: string;
+  /** IANA zones the start and end are in (a flight leaves one place and lands in another). The times stay as written. */
+  startTz?: string; endTz?: string;
+}
 export interface Expense { id: string; date: string; amount: number; currency: string; cat: ExpenseCat; desc: string }
 /** A file on a booking (ticket, voucher, PDF). The bytes live under their own storage key; see store.tsx. */
 export interface Attachment { id: string; bookingId: string; name: string; type: string; size: number }
@@ -113,6 +117,8 @@ export const dayLabel = (t: Trip, day: string) => (t.start ? `Day ${diffDays(t.s
 export interface TripEvent {
   date: string; time: string; emoji: string; icon: string; title: string; sub: string; place: string;
   src: 'item' | 'booking'; id: string; type?: BookingType;
+  /** The zone this time is in, e.g. "IST, UTC+5:30", when the booking says. */
+  tz?: string;
 }
 
 export function events(l: Log): TripEvent[] {
@@ -126,7 +132,8 @@ export function events(l: Log): TripEvent[] {
     const bits = [b.place, b.ref ? `Ref ${b.ref}` : ''];
     if (!stay && b.end) bits.push(`until ${splitStamp(b.end)[1]}`);
     out.push({ date: d, time: t, emoji: kind.emoji, icon: kind.icon, title: (b.type === 'car' ? 'Pick-up: ' : stay ? 'Check-in: ' : '') + b.title,
-      sub: bits.filter(Boolean).join(' · '), place: b.place, src: 'booking', id: b.id, type: b.type });
+      sub: bits.filter(Boolean).join(' · '), place: b.place, src: 'booking', id: b.id, type: b.type,
+      ...(b.startTz && t ? { tz: zoneLabel(b.startTz, b.start) } : {}) });
     if (stay && b.end) {
       const [d2, t2] = splitStamp(b.end);
       out.push({ date: d2, time: t2, emoji: kind.emoji, icon: kind.icon, title: (b.type === 'car' ? 'Drop-off: ' : 'Check-out: ') + b.title,
@@ -282,4 +289,37 @@ export function nights(b: Booking): number | null {
   if (!b.start || !b.end) return null;
   const n = diffDays(splitStamp(b.start)[0], splitStamp(b.end)[0]);
   return n > 0 ? n : null;
+}
+
+// ---- time zones: times are kept as written on the ticket and labelled with the zone they are in, never converted ----
+
+const ABBR: Record<string, string> = { 'Asia/Kolkata': 'IST', 'Asia/Dubai': 'GST', 'Asia/Muscat': 'GST', 'Asia/Qatar': 'AST', 'Asia/Riyadh': 'AST', 'Asia/Bahrain': 'AST',
+  'Asia/Kuwait': 'AST', 'Asia/Singapore': 'SGT', 'Asia/Bangkok': 'ICT', 'Asia/Ho_Chi_Minh': 'ICT', 'Asia/Hong_Kong': 'HKT', 'Asia/Tokyo': 'JST', 'Asia/Seoul': 'KST',
+  'Asia/Colombo': 'IST', 'Asia/Kathmandu': 'NPT', 'Asia/Dhaka': 'BST', 'Asia/Kuala_Lumpur': 'MYT', 'Asia/Manila': 'PHT', 'Asia/Jakarta': 'WIB', 'Asia/Shanghai': 'CST' };
+
+/** "IST, UTC+5:30" or "UTC+1" for a zone at a local time (the offset can change with daylight saving). Empty if the zone is unknown. */
+export function zoneLabel(tz: string, stamp: string): string {
+  try {
+    const [d, t = '12:00'] = stamp.split('T');
+    const [y, mo, da] = d.split('-').map(Number);
+    const [h, mi] = t.split(':').map(Number);
+    const parts = new Intl.DateTimeFormat('en-US', { timeZone: tz, timeZoneName: 'shortOffset' }).formatToParts(new Date(Date.UTC(y, mo - 1, da, h, mi)));
+    const off = (parts.find((p) => p.type === 'timeZoneName')?.value ?? '').replace('GMT', 'UTC') || 'UTC';
+    return ABBR[tz] ? `${ABBR[tz]}, ${off}` : off;
+  } catch { return ''; }
+}
+/** The short form for a row of text: "IST", or "UTC+1" when the zone has no common abbreviation. */
+export const zoneShort = (label: string) => label.split(',')[0];
+
+/** When a booking happens, for a list: "7 Nov, 06:15 IST → 08:25 GST" (a flight or train shows where it lands, in its own zone). */
+export function whenText(b: Booking): string {
+  if (!b.start) return '';
+  const z = (tz: string | undefined, s: string) => { const l = tz ? zoneLabel(tz, s) : ''; return l ? ` ${zoneShort(l)}` : ''; };
+  let out = `${fmtStamp(b.start)}${z(b.startTz, b.start)}`;
+  if (b.end && (b.type === 'flight' || b.type === 'train')) {
+    const [d0] = splitStamp(b.start);
+    const [d1, t1] = splitStamp(b.end);
+    out += ` → ${d1 === d0 ? t1 : fmtStamp(b.end)}${z(b.endTz, b.end)}`;
+  }
+  return out;
 }

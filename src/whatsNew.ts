@@ -10,6 +10,8 @@ export const RELEASES: Release[] = [
   { date: '2026-10-13', title: 'Add a booking from a file', changes: [
     { kind: 'new', icon: 'document-attach-outline', title: 'Add from a PDF or screenshot', text: 'Pick a ticket or confirmation and the booking is filled in for you to check: type, reference, dates, times and place.' },
     { kind: 'new', icon: 'refresh-outline', title: 'Update from a new file', text: 'Attach a changed ticket to a booking and see what differs before anything is updated.' },
+    { kind: 'new', icon: 'globe-outline', title: 'Times in their own time zone', text: 'A flight shows when it leaves and lands in each place’s local time, with the zone (IST, GST, UTC+1). Nothing is converted.' },
+    { kind: 'fixed', icon: 'airplane-outline', title: 'All the flights on a ticket', text: 'Flights from airlines the app didn’t know, and a flight number used on two days, are no longer skipped.' },
     { kind: 'new', icon: 'airplane-outline', title: 'A ticket with several flights', text: 'A ticket or itinerary with a connection or a return becomes one booking per flight, each with its own times.' },
     { kind: 'new', icon: 'list-outline', title: 'More from a flight ticket', text: 'Airline, flight number, airports with terminals, passengers, seat, class, baggage and ticket number go into the booking’s notes.' },
     { kind: 'fixed', icon: 'time-outline', title: 'Flight and activity times', text: 'Arrival times, boarding and gate times, a ticket’s booking date, ‘10 AM’, time ranges and durations are now read the way they are written.' },

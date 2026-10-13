@@ -27,6 +27,7 @@ const isTime = (v: unknown): v is number => Number.isSafeInteger(v) && (v as num
 const isDataUrl = (v: unknown): v is string => isStr(v, MAX_FILE_DATA) && /^data:[\w.+-]+\/[\w.+-]+(;[\w=.+-]+)*;base64,/.test(v);
 const TYPES = new Set<string>(BOOKING_TYPES.map((t) => t.id));
 const CATS = new Set<string>(EXPENSE_CATS.map((c) => c.id));
+const zone = (v: unknown) => (typeof v === 'string' && v.length <= 40 && /^[A-Za-z_]+(?:\/[A-Za-z0-9_+-]+){1,2}$/.test(v) ? v : undefined);
 const clock = (v: unknown) => (v === '' || isClock(v) ? (v as string) : '');
 const stamp = (v: unknown) => (v === '' || isStamp(v) ? (v as string) : '');
 
@@ -75,7 +76,8 @@ export function parseBackup(text: string, stored = false): { log: Log; files: Fi
     if (!isId(b?.id) || !isStr(b.title, 200) || !b.title.trim()) fail('booking', n);
     unique(`b:${b.id}`, 'booking', n);
     return { id: b.id, type: (TYPES.has(b.type) ? b.type : 'other') as BookingType, title: b.title, ref: isStr(b.ref, 100) ? b.ref : '',
-      start: stamp(b.start), end: stamp(b.end), place: isStr(b.place, 300) ? b.place : '', notes: isStr(b.notes, 5000) ? b.notes : '' };
+      start: stamp(b.start), end: stamp(b.end), place: isStr(b.place, 300) ? b.place : '', notes: isStr(b.notes, 5000) ? b.notes : '',
+      ...(zone(b.startTz) ? { startTz: zone(b.startTz) } : {}), ...(zone(b.endTz) ? { endTz: zone(b.endTz) } : {}) };
   });
   const bids = new Set(bookings.map((b) => b.id));
   const expenses: Expense[] = raw.expenses.map((e: any, n: number) => {

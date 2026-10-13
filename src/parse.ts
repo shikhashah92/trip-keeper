@@ -4,7 +4,7 @@
 import { addDays, dayKey, type BookingType } from './model.ts';
 
 /** `guessed` lists the times that were not found and were set to noon: they need checking. */
-export interface Parsed { type: BookingType; ref?: string; start?: string; end?: string; title: string; place?: string; guessed?: ('start' | 'end')[]; notes?: string }
+export interface Parsed { type: BookingType; ref?: string; start?: string; end?: string; title: string; place?: string; guessed?: ('start' | 'end')[]; notes?: string; startTz?: string; endTz?: string }
 
 const MONTH: Record<string, number> = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
 const MM = 'jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec';
@@ -138,7 +138,7 @@ export function parsePaste(text: string, forceType?: BookingType): Parsed {
     // looked at before the lines below, which may hold the next date's time.
     const ps = ls > 1 ? t.lastIndexOf('\n', ls - 2) + 1 : 0;
     const above = t.slice(ps, Math.max(ps, ls - 1));
-    const timeAbove = ls > 0 && /^\s*\d{1,2}\s?[:;]\s?\d{2}\s*(?:am|pm|hrs?)?\s*$/i.test(above);
+    const timeAbove = ls > 0 && /^\s*(?:\d{1,2}\s?[:;]\s?\d{2}\s*(?:am|pm|hrs?)?\s*)+$/i.test(above);
     const windows: [number, number][] = [[i, le], [ls, le], ...(timeAbove ? [[ps, ls] as [number, number]] : []), [le + 1, below], [Math.max(0, ls - 120), ls]];
     for (const [a, b] of windows) {
       const c = clocksIn(a, b, strict).find((x) => !used.has(x.at));

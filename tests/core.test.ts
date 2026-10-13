@@ -3,11 +3,11 @@ import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import {
   addDays, backupDue, byDay, delBooking, diffDays, events, expenseDays, hero, isRealDay, money, newLog, putBooking, putExpense, putItem, putMoney,
-  putTrip, spend, summary, groupBookings, nights, todayView, addAttachment, validTripDates, type Log,
+  putTrip, spend, summary, groupBookings, nights, zoneLabel, whenText, todayView, addAttachment, validTripDates, type Log,
 } from '../src/model.ts';
 import { buildIcs, fold, planHtml, planText } from '../src/ics.ts';
 import { classify, diffBooking, parsePaste } from '../src/parse.ts';
-import { parseDocument } from '../src/flights.ts';
+import { parseBest, parseDocument } from '../src/flights.ts';
 import { csvCell, parseBackup, pushSnapshot, serialize, toBackupJSON, toCSV } from '../src/backup.ts';
 import { decryptEnvelope, deriveKey, encryptWithKey, isEnvelope, newSalt } from '../src/crypto.ts';
 import { checkPin, makePin } from '../src/pin.ts';
@@ -300,6 +300,62 @@ test('four flights in the airline app layout read as four, each with its own tim
   ]);
   assert.deepEqual(found.map((f) => f.notes?.split('\n').find((l) => l.startsWith('Seat'))), ['Seat: 26A', 'Seat: 31K', 'Seat: 31K', 'Seat: 26A']);
   assert.deepEqual(found.map((f) => f.place), ['Mumbai (BOM) Terminal 2', 'Abu Dhabi (AUH) Terminal A', 'London (Heathrow) (LHR) Terminal 4', 'Abu Dhabi (AUH) Terminal A']);
+});
+
+test('all four flights are found: an airline missing from the table, a flight number used twice, a code that is also an aircraft', () => {
+  const block = (head: string, cities: string, a: string, b: string, t1: string, d1: string, t2: string, d2: string, plane: string) =>
+    [head, cities, a, b, t1, d1, 'Departure Airport', 'Terminal 1', '02h 10m • Non stop', plane, t2, d2, 'Arrival Airport', 'Terminal 3', 'Seat 12C', 'Status CONFIRMED'].join('\n');
+  const doc = [
+    block('EY 205 • Etihad', 'Mumbai Abu Dhabi', 'BOM', 'AUH', '23:10', '23 Oct 2026', '00:45', '24 Oct 2026', 'Airbus A350-1000'),
+    // an airline that is not in the table, found because its line opens with the number and a name
+    block('QZ 8841 • Some Regional Air', 'Abu Dhabi Muscat', 'AUH', 'MCT', '09:00', '24 Oct 2026', '10:15', '24 Oct 2026', 'ATR 72-600'),
+    block('QZ 8842 • Some Regional Air', 'Muscat Abu Dhabi', 'MCT', 'AUH', '18:30', '30 Oct 2026', '19:50', '30 Oct 2026', 'ATR 72-600'),
+    // the first flight's number again, on another day: a new flight, not the same one
+    block('EY 205 • Etihad', 'Mumbai Abu Dhabi', 'BOM', 'AUH', '23:10', '06 Nov 2026', '00:45', '07 Nov 2026', 'Airbus A350-1000'),
+  ].join('\n');
+  const found = parseDocument(doc);
+  assert.deepEqual(found.map((f) => [f.title, f.start]), [
+    ['EY 205 BOM → AUH', '2026-10-23T23:10'],
+    ['QZ 8841 AUH → MCT', '2026-10-24T09:00'],
+    ['QZ 8842 MCT → AUH', '2026-10-30T18:30'],
+    ['EY 205 BOM → AUH', '2026-11-06T23:10'],
+  ]);
+  assert.equal(found[1].notes?.split('\n')[0], 'Airline: Some Regional Air');
+});
+
+test('times are kept as written and stated with the zone they are in, never converted', () => {
+  const [f] = parseDocument(APP_TICKET);
+  assert.equal(f.startTz, 'Asia/Kolkata');
+  assert.equal(f.endTz, 'Asia/Dubai');
+  assert.equal(f.start, '2026-10-23T23:10', 'not converted');
+  assert.equal(f.end, '2026-10-24T00:45', 'not converted');
+  assert.equal(zoneLabel('Asia/Kolkata', '2026-10-23T23:10'), 'IST, UTC+5:30');
+  assert.equal(zoneLabel('Asia/Dubai', '2026-10-24T00:45'), 'GST, UTC+4');
+  assert.equal(zoneLabel('Europe/Paris', '2026-07-01T12:00'), 'UTC+2', 'daylight saving is taken into account');
+  assert.equal(zoneLabel('Not/AZone', '2026-07-01T12:00'), '');
+  const b = { id: 'b', type: 'flight' as const, title: 'EY 205', ref: '', start: f.start!, end: f.end!, place: '', notes: '', startTz: f.startTz, endTz: f.endTz };
+  assert.equal(whenText(b).replace(/\s+/g, ' '), '23 Oct, 23:10 IST → 24 Oct, 00:45 GST');
+  // kept through a backup, and a bad zone name is dropped rather than refused
+  const l = putBooking(newLog(0), b);
+  assert.equal(parseBackup(serialize(l), true).log.bookings[0].endTz, 'Asia/Dubai');
+  const bad = JSON.parse(serialize(l));
+  bad.bookings[0].startTz = '<script>';
+  assert.equal(parseBackup(JSON.stringify(bad), true).log.bookings[0].startTz, undefined);
+});
+
+test('the same ticket read as rows by position gives the same flight, and the better reading wins', () => {
+  // two columns side by side, as a row-by-row read of the page comes out
+  const rows = ['EY 205 • Etihad', 'Mumbai  Abu Dhabi', 'BOM  03h 05m • Non stop  AUH', '23:10  00:45', '23 Oct 2026  24 Oct 2026',
+    'Chhatrapati S Maharaj  Zayed International Airport', 'Terminal 2  Terminal A', 'Airbus A350-1000', 'Fare type Value', 'Seat 26A', 'Cabin 7kg', 'Checked 30kg', 'Status CONFIRMED'].join('\n');
+  const [f] = parseDocument(rows);
+  assert.equal(f.title, 'EY 205 BOM → AUH');
+  assert.equal(f.start, '2026-10-23T23:10');
+  assert.equal(f.end, '2026-10-24T00:45');
+  assert.ok(f.notes?.includes('From: Mumbai (BOM), Terminal 2') && f.notes.includes('To: Abu Dhabi (AUH), Terminal A'));
+  // given a muddled reading and a clean one, the clean one is used whichever comes first
+  const muddled = 'Terminal 2\nTerminal A\nSeat 26A\nAirbus A350-1000';
+  assert.equal(parseBest([muddled, rows]).index, 1);
+  assert.equal(parseBest([rows, muddled]).index, 0);
 });
 
 test('notes from a file are added below what is there, never over it', () => {

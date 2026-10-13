@@ -1,6 +1,6 @@
 // The calendar file (.ics) and the plain-text itinerary. Pure, so the exact output is unit tested.
 // Times are floating local times: the phone's calendar shows them at the same clock time wherever you are.
-import { addDays, dayKey, dayLabel, events, fmtDate, type Log } from './model.ts';
+import { addDays, dayKey, dayLabel, events, fmtDate, zoneShort, type Log } from './model.ts';
 
 const esc = (t: string) => t.replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n');
 const dt = (day: string, time: string) => `${day.replace(/-/g, '')}T${time.replace(':', '')}00`;
@@ -74,7 +74,7 @@ export function planText(l: Log): string {
   for (const d of new Set(ev.map((e) => e.date))) {
     const label = dayLabel(t, d);
     out += `\n${fmtDate(d)}${label ? ` (${label})` : ''}\n`;
-    for (const e of ev.filter((x) => x.date === d)) out += `• ${e.time ? `${e.time} ` : ''}${e.emoji} ${e.title}${e.place ? ` — ${e.place}` : ''}\n`;
+    for (const e of ev.filter((x) => x.date === d)) out += `• ${e.time ? `${e.time}${e.tz ? ` ${zoneShort(e.tz)}` : ''} ` : ''}${e.emoji} ${e.title}${e.place ? ` — ${e.place}` : ''}\n`;
   }
   return out.trim();
 }

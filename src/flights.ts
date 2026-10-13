@@ -43,33 +43,63 @@ const CITY_CODE: Record<string, string> = (() => {
 const escapeRx = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, (c) => `\\${c}`);
 const CITY_RX = new RegExp(`\\b(${Object.keys(CITY_CODE).sort((a, b) => b.length - a.length).map(escapeRx).join('|')})\\b(?!\\s+(?:airlines?|airways|air\\b))`, 'gi');
 
+// The time zone of each airport in AIRPORTS, by group. A ticket's times are local to each airport.
+const TZ_GROUPS: Record<string, string[]> = {
+  'Asia/Kolkata': ['BOM', 'DEL', 'BLR', 'MAA', 'HYD', 'CCU', 'GOI', 'GOX', 'PNQ', 'AMD', 'COK', 'JAI', 'LKO', 'TRV', 'GAU', 'IXC', 'SXR', 'ATQ', 'IXB', 'VNS', 'PAT', 'BBI', 'NAG', 'IDR', 'CJB', 'IXE', 'IXM', 'VTZ', 'RPR', 'IXR', 'UDR', 'JDH', 'DED', 'IXL', 'IMF', 'DIB', 'BHO', 'STV'],
+  'Asia/Dubai': ['DXB', 'DWC', 'AUH', 'SHJ'], 'Asia/Qatar': ['DOH'], 'Asia/Muscat': ['MCT'], 'Asia/Bahrain': ['BAH'], 'Asia/Kuwait': ['KWI'], 'Asia/Riyadh': ['RUH', 'JED'],
+  'Asia/Singapore': ['SIN'], 'Asia/Kuala_Lumpur': ['KUL'], 'Asia/Bangkok': ['BKK', 'DMK', 'HKT', 'CNX', 'USM'], 'Asia/Hong_Kong': ['HKG'], 'Asia/Tokyo': ['NRT', 'HND', 'KIX'],
+  'Asia/Seoul': ['ICN'], 'Asia/Shanghai': ['PEK', 'PVG', 'CAN'], 'Asia/Jakarta': ['CGK'], 'Asia/Makassar': ['DPS'], 'Asia/Manila': ['MNL'], 'Asia/Ho_Chi_Minh': ['SGN', 'HAN'],
+  'Asia/Colombo': ['CMB'], 'Asia/Kathmandu': ['KTM'], 'Asia/Dhaka': ['DAC'], 'Indian/Maldives': ['MLE'], 'Asia/Thimphu': ['PBH'],
+  'Australia/Sydney': ['SYD', 'MEL'], 'Australia/Brisbane': ['BNE'], 'Australia/Perth': ['PER'], 'Pacific/Auckland': ['AKL'],
+  'Europe/London': ['LHR', 'LGW', 'STN', 'MAN', 'EDI'], 'Europe/Dublin': ['DUB'], 'Europe/Paris': ['CDG', 'ORY'], 'Europe/Amsterdam': ['AMS'], 'Europe/Berlin': ['FRA', 'MUC', 'BER'],
+  'Europe/Zurich': ['ZRH', 'GVA'], 'Europe/Vienna': ['VIE'], 'Europe/Rome': ['FCO', 'MXP', 'VCE'], 'Europe/Madrid': ['MAD', 'BCN'], 'Europe/Lisbon': ['LIS', 'OPO'],
+  'Europe/Istanbul': ['IST'], 'Europe/Athens': ['ATH'], 'Europe/Copenhagen': ['CPH'], 'Europe/Stockholm': ['ARN'], 'Europe/Oslo': ['OSL'], 'Europe/Helsinki': ['HEL'],
+  'Europe/Warsaw': ['WAW'], 'Europe/Prague': ['PRG'], 'Europe/Budapest': ['BUD'], 'Europe/Brussels': ['BRU'], 'Atlantic/Reykjavik': ['KEF'],
+  'Africa/Cairo': ['CAI'], 'Africa/Nairobi': ['NBO'], 'Africa/Johannesburg': ['JNB', 'CPT'],
+  'America/New_York': ['JFK', 'EWR', 'IAD', 'ATL', 'BOS', 'MIA'], 'America/Chicago': ['ORD', 'DFW', 'IAH'], 'America/Los_Angeles': ['LAX', 'SFO', 'SEA'],
+  'America/Toronto': ['YYZ'], 'America/Vancouver': ['YVR'], 'America/Mexico_City': ['MEX'], 'America/Sao_Paulo': ['GRU'],
+};
+export const AIRPORT_TZ: Record<string, string> = {};
+for (const [tz, codes] of Object.entries(TZ_GROUPS)) for (const c of codes) AIRPORT_TZ[c] = tz;
+
 const code = (c: string) => (AIRPORTS[c] ? `${AIRPORTS[c]} (${c})` : c);
 
 export interface FlightSegment extends Parsed { flightNo: string; airline?: string; from?: string; to?: string }
 
 const FLIGHT_NO = /\b([A-Z0-9]{2})[\s-]?(\d{1,4})\b/g;
-/** Flight numbers in the text, each once, at the line where it first appears (a repeat in a header or a footer is the same flight). */
-function flightMarks(t: string): { no: string; code: string; at: number }[] {
-  const seen = new Set<string>();
-  const out: { no: string; code: string; at: number }[] = [];
+
+interface Mark { no: string; code: string; at: number; name?: string }
+/**
+ * Flight numbers in the text, each at the start of its line. A number counts when its airline code is one we know,
+ * when it follows the word "flight", or when its line opens with it and a name ("EY 205 • Etihad"), so an airline
+ * missing from the table is still found. The same number twice in a row is one flight; later it is another day's.
+ */
+function flightMarks(t: string): Mark[] {
+  const out: Mark[] = [];
   for (const m of t.matchAll(FLIGHT_NO)) {
     const c = m[1];
-    if (!AIRLINES[c] || !/[A-Z]/.test(c)) continue;
+    if (!/[A-Z]/.test(c)) continue;
+    const at = t.lastIndexOf('\n', m.index) + 1;
+    const lineEnd = t.indexOf('\n', m.index);
+    const line = t.slice(at, lineEnd < 0 ? t.length : lineEnd);
+    const labelled = /(?:flight|flt)\s*(?:no\.?|number)?\s*[:#-]?\s*$/i.test(t.slice(Math.max(0, m.index - 18), m.index));
+    const named = /^\s*[•·|–—-]\s*([A-Za-z][A-Za-z .&'-]{2,30})/.exec(line.slice(line.indexOf(m[0]) + m[0].length));
+    const opens = line.trimStart().startsWith(m[0]);
+    if (!AIRLINES[c] && !labelled && !(opens && named)) continue;
     // "AI 123" yes; "AI 2026" is probably a year, and a time like "AI 06:15" is not a number at all.
-    if (+m[2] > 9999 || (m[2].length === 4 && +m[2] >= 1900 && +m[2] <= 2100 && !/flight|flt/i.test(t.slice(Math.max(0, m.index - 12), m.index)))) continue;
+    if (+m[2] > 9999 || (m[2].length === 4 && +m[2] >= 1900 && +m[2] <= 2100 && !labelled)) continue;
     const next = t[m.index + m[0].length];
     if (next === ':' || next === '.' || (next === '-' && /\d/.test(t[m.index + m[0].length + 1] ?? ''))) continue;
     // "Airbus A350", "Boeing 737": the aircraft, even where its letters are also an airline's code.
     if (/airbus|boeing|embraer|aircraft|atr|bombardier|canadair|equipment/i.test(t.slice(Math.max(0, m.index - 14), m.index))) continue;
     if (/^A[1-3]$/.test(c) && m[0] === c + m[2] && m[2].length === 2) continue; // A318 ... A388 written without a space: an aircraft, not Aegean
     const no = `${c} ${+m[2]}`;
-    if (seen.has(no)) continue;
-    seen.add(no);
-    out.push({ no, code: c, at: t.lastIndexOf('\n', m.index) + 1 }); // the start of its line
+    const prev = out[out.length - 1];
+    if (prev && (prev.at === at || prev.no === no)) continue; // the same line, or the same flight named again straight after
+    out.push({ no, code: c, at, name: named?.[1]?.trim() });
   }
   return out;
 }
-
 // Three letters in brackets that are not airports: a reference label, a currency, a tax.
 const NOT_AIRPORT = new Set(['PNR', 'GST', 'USD', 'INR', 'EUR', 'GBP', 'AED', 'SGD', 'THB', 'VAT', 'TAX', 'ETA', 'ETD', 'TBA', 'MRP', 'PDF', 'URL', 'FAQ', 'OTA', 'CGST', 'SGST', 'IGST', 'UDF', 'PSF', 'ASF', 'EMD', 'GDS']);
 const NOT_PLACE = /reference|booking|ticket|fare|tax|amount|total|payment|number|passenger|charge|fee|convenience|discount/i;
@@ -85,7 +115,8 @@ function airportsIn(s: string): { code: string; name: string }[] {
   }
   if (out.length < 2) for (const m of s.matchAll(/\b([A-Z]{3})\s*(?:→|->|–|—|-|to)\s*([A-Z]{3})\b/g)) { add(m[1]); add(m[2]); }
   // A code alone on its line, the way app screens and some e-tickets print it.
-  if (out.length < 2) for (const m of s.matchAll(/^[ \t]*([A-Z]{3})[ \t]*$/gm)) if (AIRPORTS[m[1]]) add(m[1]);
+  // (or one of several columns on a line: "BOM   03h 05m • Non stop   AUH").
+  if (out.length < 2) for (const line of s.split('\n')) for (const tok of line.split(/\s{2,}/)) { const c = tok.trim(); if (/^[A-Z]{3}$/.test(c) && AIRPORTS[c]) add(c); }
   // No codes: look for city names, in the order they appear.
   if (out.length < 2) for (const m of s.matchAll(CITY_RX)) { const c = CITY_CODE[m[1].toLowerCase()]; if (c) add(c, AIRPORTS[c]?.replace(/\s*\(.*\)\s*$/, '') ?? ''); }
   return out;
@@ -158,7 +189,7 @@ export function parseFlights(text: string): FlightSegment[] {
     const d = detailsOf(sp.text, t);
     const term = terminalsIn(sp.text);
     const lines: string[] = [];
-    const airline = sp.mark ? AIRLINES[sp.mark.code] : undefined;
+    const airline = sp.mark ? AIRLINES[sp.mark.code] ?? sp.mark.name : undefined;
     if (airline) lines.push(`Airline: ${airline}`);
     if (no) lines.push(`Flight: ${no}`);
     if (from) lines.push(`From: ${from.name ? `${from.name} (${from.code})` : code(from.code)}${term[0] ? `, Terminal ${term[0]}` : ''}`);
@@ -170,9 +201,20 @@ export function parseFlights(text: string): FlightSegment[] {
       ...base, type: 'flight', ref: base.ref ?? ref, title,
       place: from ? `${from.name || AIRPORTS[from.code] || ''}${from.name || AIRPORTS[from.code] ? ' ' : ''}(${from.code})${term[0] ? ` Terminal ${term[0]}` : ''}` : base.place,
       notes: lines.join('\n') || undefined, flightNo: no, airline, from: from?.code, to: to?.code,
+      ...(from && AIRPORT_TZ[from.code] ? { startTz: AIRPORT_TZ[from.code] } : {}), ...(to && AIRPORT_TZ[to.code] ? { endTz: AIRPORT_TZ[to.code] } : {}),
     });
   }
-  return out;
+  // The same flight on the same day twice (a summary at the top, then the details): keep the fuller one, in the first one's place.
+  const keep = new Map<string, number>();
+  const merged: FlightSegment[] = [];
+  for (const f of out) {
+    const key = `${f.flightNo}|${(f.start ?? '').slice(0, 10)}`;
+    const at = keep.get(key);
+    if (at === undefined || !f.flightNo) { keep.set(key, merged.length); merged.push(f); continue; }
+    const have = merged[at];
+    if ((f.end ? 1 : 0) + (f.from && f.to ? 1 : 0) + (f.notes?.length ?? 0) / 1000 > (have.end ? 1 : 0) + (have.from && have.to ? 1 : 0) + (have.notes?.length ?? 0) / 1000) merged[at] = f;
+  }
+  return merged;
 }
 
 /** Everything bookable in a document: one booking per flight on a ticket, otherwise the one booking the text describes. */
@@ -181,4 +223,28 @@ export function parseDocument(text: string): Parsed[] {
   if (base.type !== 'flight') return [base];
   const flights = parseFlights(text);
   return flights.length ? flights : [base];
+}
+
+/** How complete a reading is: flights with dates, times and both airports count, a flight that is only a number does not. */
+function score(list: Parsed[]): number {
+  return list.reduce((n, p) => {
+    const f = p as Partial<FlightSegment>;
+    const full = (p.start ? 2 : -3) + (p.end ? 2 : 0) + (f.from && f.to ? 2 : -2) + (f.flightNo ? 1 : 0) - (p.guessed?.length ?? 0) * 2;
+    return n + full;
+  }, 0);
+}
+
+/**
+ * A PDF can be read in the order its text was drawn or as rows by position; which one suits a ticket depends on how
+ * it was made. Read the text each way and keep the reading that found the most. The first wins a tie.
+ */
+export function parseBest(texts: string[]): { parsed: Parsed[]; text: string; index: number } {
+  let best = { parsed: parseDocument(texts[0]), text: texts[0], index: 0 };
+  let top = score(best.parsed);
+  texts.slice(1).forEach((text, i) => {
+    const parsed = parseDocument(text);
+    const sc = score(parsed);
+    if (sc > top) { top = sc; best = { parsed, text, index: i + 1 }; }
+  });
+  return best;
 }

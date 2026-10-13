@@ -139,16 +139,22 @@ export async function renderPdfInto(f: Source, el: HTMLElement, progress: Progre
   }
 }
 
-/** The text of a PDF, line by line, from its own text layer; scanned pages fall back to OCR. */
-async function pdfText(f: Source, progress: Progress): Promise<string> {
+/**
+ * The text of a PDF from its own text layer, read two ways: as rows by position (a table reads left to right) and in
+ * the order it was drawn (a card drawn a column at a time reads top to bottom). Scanned pages fall back to OCR.
+ */
+async function pdfTexts(f: Source, progress: Progress): Promise<string[]> {
   const doc = await openPdf(f);
   const pages = Math.min(doc.numPages, 10);
-  let text = '';
+  let rows = '';
+  let drawn = '';
   for (let n = 1; n <= pages; n++) {
     progress(pages > 1 ? `Reading page ${n} of ${pages}…` : 'Reading…');
-    text += `${linesOf((await (await doc.getPage(n)).getTextContent()).items)}\n`;
+    const items = (await (await doc.getPage(n)).getTextContent()).items;
+    rows += `${linesOf(items)}\n`;
+    drawn += `${items.map((it: { str: string; hasEOL?: boolean }) => it.str + (it.hasEOL ? '\n' : ' ')).join('')}\n`;
   }
-  if (text.replace(/\s/g, '').length >= 40) return text;
+  if (rows.replace(/\s/g, '').length >= 40) return rows.trim() === drawn.trim() ? [rows] : [rows, drawn];
 
   // Almost no text: a scan or a photo saved as PDF. Draw the first pages and read them as images.
   const canvases: HTMLCanvasElement[] = [];
@@ -161,15 +167,15 @@ async function pdfText(f: Source, progress: Progress): Promise<string> {
     await page.render({ canvasContext: c.getContext('2d')!, viewport: view }).promise;
     canvases.push(c);
   }
-  return ocr(canvases, progress);
+  return [await ocr(canvases, progress)];
 }
 
-/** All the text found in a PDF or image. Throws a sentence the person can read. */
-export async function readFileText(f: Source, progress: Progress = () => {}): Promise<string> {
-  let text: string;
-  if (isPdf(f)) text = await pdfText(f, progress);
-  else if (isImage(f)) text = await ocr([await toCanvas(f.data)], progress);
+/** All the readings of the text in a PDF or image (one for an image). Throws a sentence the person can read. */
+export async function readFileTexts(f: Source, progress: Progress = () => {}): Promise<string[]> {
+  let texts: string[];
+  if (isPdf(f)) texts = await pdfTexts(f, progress);
+  else if (isImage(f)) texts = [await ocr([await toCanvas(f.data)], progress)];
   else throw new Error('Only PDFs and images can be read.');
-  if (text.replace(/\s/g, '').length < 10) throw new Error('No text was found in this file.');
-  return text;
+  if (texts.every((t) => t.replace(/\s/g, '').length < 10)) throw new Error('No text was found in this file.');
+  return texts;
 }

@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { Linking, Modal, Pressable, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { mapUrl, type TripEvent } from './model';
+import { mapUrl, zoneShort, type TripEvent } from './model';
 import { checkPin } from './pin';
 import { useStore, useTheme } from './store';
 import { Badge, Button, Field, T } from './ui';
@@ -19,7 +19,10 @@ export function EventRow({ e, last }: { e: TripEvent; last?: boolean }) {
   return (
     <View style={[{ paddingVertical: space.sm }, !last && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: c.border }]}>
       <Pressable accessibilityRole="button" accessibilityLabel={`${e.time} ${e.title}`} onPress={edit} style={({ pressed }) => [{ flexDirection: 'row', gap: space.md, alignItems: 'flex-start', minHeight: 48 }, pressed && { opacity: 0.6 }]}>
-        <T v="small" style={{ width: 46, paddingTop: 2 }}>{e.time}</T>
+        <View style={{ width: 46, paddingTop: 2 }}>
+          <T v="small">{e.time}</T>
+          {e.tz ? <T v="small" style={{ fontSize: 11 }}>{zoneShort(e.tz)}</T> : null}
+        </View>
         <Badge icon={e.icon} size={36} />
         <View style={{ flex: 1, minWidth: 0 }}>
           <T style={{ fontWeight: '600' }}>{e.title}</T>

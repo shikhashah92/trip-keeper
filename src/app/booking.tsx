@@ -3,10 +3,10 @@ import { ActivityIndicator, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useLog, useTheme } from '../store';
-import { BOOKING_TYPE, BOOKING_TYPES, delAttachment, delBooking, filesOf, newId, putBooking, type BookingType } from '../model';
+import { BOOKING_TYPE, BOOKING_TYPES, delAttachment, delBooking, filesOf, newId, putBooking, zoneLabel, type BookingType } from '../model';
 import { diffBooking, type Change, type Current, type Parsed } from '../parse';
-import { parseDocument } from '../flights';
-import { canRead, readFileText } from '../reader';
+import { parseBest } from '../flights';
+import { canRead, readFileTexts } from '../reader';
 import { clearHandOff, peekHandOff, setViewing } from '../handoff';
 import { choose, confirm, notify, pickFiles, type Picked } from '../io';
 import { goBack } from '../components';
@@ -38,6 +38,8 @@ export default function BookingScreen() {
   const [end, setEnd] = useState(old?.end ?? pre.end ?? '');
   const [place, setPlace] = useState(old?.place ?? pre.place ?? '');
   const [notes, setNotes] = useState(old?.notes ?? '');
+  const [startTz, setStartTz] = useState<string | undefined>(old?.startTz); // zones a read ticket named: the times stay as written
+  const [endTz, setEndTz] = useState<string | undefined>(old?.endTz);
   const [removed, setRemoved] = useState<string[]>([]);
   const [added, setAdded] = useState<Picked[]>(() => peekHandOff()); // from "Add from a PDF or screenshot"
   const [reading, setReading] = useState<string | null>(null);
@@ -55,16 +57,19 @@ export default function BookingScreen() {
     if (!f) return; // a Word file and the like: attached, but there is nothing to read
     setReading(`Reading “${f.name}”…`);
     try {
-      const text = await readFileText(f, (m) => setReading(m));
-      setLastRead(text);
-      let found = parseDocument(text);
+      const texts = await readFileTexts(f, (m) => setReading(m));
+      const best = parseBest(texts);
+      // One report with everything needed to see why a reading went wrong: the build, the text each way, and what was made of it.
+      setLastRead([`Trip Keeper build ${process.env.EXPO_PUBLIC_BUILD ?? 'dev'}`, `File: ${f.name} (${f.type})`, `Used reading ${best.index + 1} of ${texts.length}`,
+        ...texts.map((t, i) => `\n--- text, reading ${i + 1} ---\n${t}`), '\n--- found ---', JSON.stringify(best.parsed, null, 1)].join('\n'));
+      let found = best.parsed;
       // A ticket with several flights (a connection, a return): offer one booking for each, as a trip planner would.
       if (found.length > 1 && !old) {
         const list2 = found.map((p, i) => `${i + 1}. ${oneLine(p)}`).join('\n');
         if (await choose(`${found.length} flights found`, `${list2}\n\nAdd each as its own booking? The file is attached to the first.`, `Add all ${found.length}`, 'Only the first')) {
           const ids = found.map(() => newId('b'));
           update((l) => found.reduce((n, p, i) => putBooking(n, { id: ids[i], type: 'flight', title: p.title, ref: p.ref ?? '', start: p.start ?? '',
-            end: p.end ?? '', place: p.place ?? '', notes: p.notes ?? '' }), l));
+            end: p.end ?? '', place: p.place ?? '', notes: p.notes ?? '', startTz: p.startTz, endTz: p.endTz }), l));
           for (const file of new Set([...pending.current, ...list])) addFile(ids[0], file);
           notify(`${found.length} flights added`, 'Each is in Bookings and on its day in the itinerary. Check the times there.');
           return goBack();
@@ -74,10 +79,12 @@ export default function BookingScreen() {
       // Editing a booking: use the flight on the file that matches it, if there is one.
       const p = (old && found.find((x) => x.title && old.title.includes(x.title.split(' ').slice(0, 2).join(' ')))) || found[0];
       const changes = diffBooking(now.current, p, !old);
-      if (!changes.length) return notify('Nothing to fill in', `“${f.name}” was read, but it didn’t give anything new for this booking. If you expected more, tap “Copy the text that was read” below to see what the reader had to work with.`);
+      if (!changes.length) return notify('Nothing to fill in', `“${f.name}” was read, but it didn’t give anything new for this booking. If you expected more, tap “Copy a report of what was read” below to see what the reader had to work with.`);
       const lines = changes.map((ch) => `${LABEL[ch.field]}: ${ch.from ? `${show(ch.field, ch.from)} → ` : ''}${show(ch.field, ch.to)}${ch.guessed ? ' (time not found, please check)' : ''}`);
       const ok = await confirm(old ? 'Update from this file?' : 'Fill in from this file?', `${lines.join('\n')}\n\nCheck these before you save.`, old ? 'Update' : 'Fill in');
       if (!ok) return;
+      if (p.startTz) setStartTz(p.startTz);
+      if (p.endTz) setEndTz(p.endTz);
       for (const ch of changes) {
         if (ch.field === 'type') setType(ch.to as BookingType);
         else if (ch.field === 'title') setTitle(ch.to);
@@ -123,7 +130,7 @@ export default function BookingScreen() {
     view({ name, type: mime, data });
   }
   async function copyRead() {
-    try { await navigator.clipboard.writeText(lastRead); notify('Copied', 'The text found in the file is on your clipboard.'); }
+    try { await navigator.clipboard.writeText(lastRead); notify('Copied', 'The report is on your clipboard. Paste it where you were asked to; it has the text from the file in it.'); }
     catch { notify('Could not copy', 'Your browser did not allow it.'); }
   }
   function save() {
@@ -132,7 +139,7 @@ export default function BookingScreen() {
     if (start && end && end < start) return notify('Check the dates', 'It ends before it starts.');
     const bid = old?.id ?? newId('b');
     update((l) => {
-      let n = putBooking(l, { id: bid, type, title: title.trim(), ref: ref.trim(), start, end, place: place.trim(), notes: notes.trim() });
+      let n = putBooking(l, { id: bid, type, title: title.trim(), ref: ref.trim(), start, end, place: place.trim(), notes: notes.trim(), startTz, endTz });
       for (const r of removed) n = delAttachment(n, r);
       return n;
     });
@@ -168,9 +175,11 @@ export default function BookingScreen() {
       <Gap />
       <T v="label">Starts (departure or check-in)</T>
       <DateTimeField value={start} onChange={setStart} label="Starts" />
+      {startTz && start ? <T v="small">Local time there: {zoneLabel(startTz, start)}</T> : null}
       <Gap />
       <T v="label">Ends (arrival or check-out)</T>
       <DateTimeField value={end} onChange={setEnd} label="Ends" />
+      {endTz && end ? <T v="small">Local time there: {zoneLabel(endTz, end)}</T> : null}
       <Gap />
       <Field label="Address, airport or place" value={place} onChangeText={setPlace} />
       <Gap />
@@ -195,7 +204,7 @@ export default function BookingScreen() {
       <Gap h={space.sm} />
       <Button title="Attach files" icon="attach" kind="secondary" onPress={attach} disabled={!!reading} />
       <T v="small" style={{ marginTop: space.sm }}>A PDF or screenshot is read on this phone to fill in the details. It is not sent anywhere.</T>
-      {lastRead ? <><Gap h={space.sm} /><Button title="Copy the text that was read" kind="ghost" icon="copy-outline" onPress={copyRead} /></> : null}
+      {lastRead ? <><Gap h={space.sm} /><Button title="Copy a report of what was read" kind="ghost" icon="copy-outline" onPress={copyRead} /></> : null}
       <Gap h={24} />
       <Button title="Save" onPress={save} disabled={!!reading} />
       {old ? <><Gap h={12} /><Button title="Delete booking" kind="danger" onPress={remove} /></> : null}
