@@ -134,7 +134,13 @@ export function parsePaste(text: string, forceType?: BookingType): Parsed {
     if (le < 0) le = t.length;
     // Below the date: the next few lines, up to the next date (labels like "Boarding" or "Doors open" often come first).
     const below = Math.min(dates.find((f) => f.i > le)?.i ?? t.length, le + 1 + 240);
-    for (const [a, b] of [[i, le], [ls, le], [le + 1, below], [Math.max(0, ls - 120), ls]] as const) {
+    // A time on a line of its own right above the date ("23:10" over "23 Oct 2026") belongs to that date, and is
+    // looked at before the lines below, which may hold the next date's time.
+    const ps = ls > 1 ? t.lastIndexOf('\n', ls - 2) + 1 : 0;
+    const above = t.slice(ps, Math.max(ps, ls - 1));
+    const timeAbove = ls > 0 && /^\s*\d{1,2}\s?[:;]\s?\d{2}\s*(?:am|pm|hrs?)?\s*$/i.test(above);
+    const windows: [number, number][] = [[i, le], [ls, le], ...(timeAbove ? [[ps, ls] as [number, number]] : []), [le + 1, below], [Math.max(0, ls - 120), ls]];
+    for (const [a, b] of windows) {
       const c = clocksIn(a, b, strict).find((x) => !used.has(x.at));
       if (c) { used.add(c.at); return c; }
     }

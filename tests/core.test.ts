@@ -258,6 +258,50 @@ test('a ticket with city names and no airport codes: four flights, each read on 
   assert.equal(sq[0].title, 'SQ 423 BOM → SIN');
 });
 
+// A real ticket layout (an airline app screen): the time is above the date, airport codes stand alone on a line,
+// the aircraft is "Airbus A350-1000" (A3 is also an airline code), and baggage is "Cabin 7kg / Checked 30kg".
+const APP_TICKET = [
+  'EY 205 • Etihad', 'Mumbai Abu Dhabi', 'BOM', 'AUH', '23:10', '23 Oct 2026', 'Chhatrapati S Maharaj', 'Terminal 2',
+  '03h 05m • Non stop', 'Airbus A350-1000', '00:45', '24 Oct 2026', 'Zayed International Airport', 'Terminal A', 'BOM',
+  'Fare type Value', 'Seat 26A', 'Cabin 7kg', 'Checked 30kg', 'Status CONFIRMED',
+].join('\n');
+
+test('an airline app ticket: time above the date, codes on their own lines, an A350 that is not a flight', () => {
+  const found = parseDocument(APP_TICKET);
+  assert.equal(found.length, 1, 'A350 is an aircraft, not a second flight');
+  const f = found[0];
+  assert.equal(f.title, 'EY 205 BOM → AUH');
+  assert.equal(f.start, '2026-10-23T23:10');
+  assert.equal(f.end, '2026-10-24T00:45');
+  assert.equal(f.guessed, undefined);
+  assert.equal(f.place, 'Mumbai (BOM) Terminal 2');
+  for (const line of ['Airline: Etihad', 'Flight: EY 205', 'From: Mumbai (BOM), Terminal 2', 'To: Abu Dhabi (AUH), Terminal A', 'Seat: 26A',
+    'Cabin baggage: 7kg', 'Checked baggage: 30kg', 'Aircraft: Airbus A350-1000', 'Duration: 3h 05m, non-stop', 'Fare: Value', 'Status: Confirmed']) {
+    assert.ok(f.notes?.split('\n').includes(line), `notes should have "${line}", got:\n${f.notes}`);
+  }
+});
+
+test('four flights in the airline app layout read as four, each with its own times', () => {
+  const block = (no: string, cities: string, a: string, b: string, t1: string, d1: string, term1: string, dur: string, plane: string, t2: string, d2: string, term2: string, seat: string) =>
+    [`${no} • Etihad`, cities, a, b, t1, d1, 'Some International Airport', `Terminal ${term1}`, dur, plane, t2, d2, 'Other International Airport', `Terminal ${term2}`, a,
+      'Fare type Value', `Seat ${seat}`, 'Cabin 7kg', 'Checked 30kg', 'Status CONFIRMED'].join('\n');
+  const doc = [
+    block('EY 205', 'Mumbai Abu Dhabi', 'BOM', 'AUH', '23:10', '23 Oct 2026', '2', '03h 05m • Non stop', 'Airbus A350-1000', '00:45', '24 Oct 2026', 'A', '26A'),
+    block('EY 11', 'Abu Dhabi London', 'AUH', 'LHR', '08:25', '24 Oct 2026', 'A', '07h 25m • Non stop', 'Boeing 787-9', '12:50', '24 Oct 2026', '4', '31K'),
+    block('EY 12', 'London Abu Dhabi', 'LHR', 'AUH', '21:35', '02 Nov 2026', '4', '06h 45m • Non stop', 'Boeing 787-9', '07:20', '03 Nov 2026', 'A', '31K'),
+    block('EY 206', 'Abu Dhabi Mumbai', 'AUH', 'BOM', '09:45', '03 Nov 2026', 'A', '03h 15m • Non stop', 'Airbus A350-1000', '14:30', '03 Nov 2026', '2', '26A'),
+  ].join('\n');
+  const found = parseDocument(doc);
+  assert.deepEqual(found.map((f) => [f.title, f.start, f.end]), [
+    ['EY 205 BOM → AUH', '2026-10-23T23:10', '2026-10-24T00:45'],
+    ['EY 11 AUH → LHR', '2026-10-24T08:25', '2026-10-24T12:50'],
+    ['EY 12 LHR → AUH', '2026-11-02T21:35', '2026-11-03T07:20'],
+    ['EY 206 AUH → BOM', '2026-11-03T09:45', '2026-11-03T14:30'],
+  ]);
+  assert.deepEqual(found.map((f) => f.notes?.split('\n').find((l) => l.startsWith('Seat'))), ['Seat: 26A', 'Seat: 31K', 'Seat: 31K', 'Seat: 26A']);
+  assert.deepEqual(found.map((f) => f.place), ['Mumbai (BOM) Terminal 2', 'Abu Dhabi (AUH) Terminal A', 'London (Heathrow) (LHR) Terminal 4', 'Abu Dhabi (AUH) Terminal A']);
+});
+
 test('notes from a file are added below what is there, never over it', () => {
   const p = { type: 'flight' as const, title: 'AI 131 BOM → LHR', notes: 'Airline: Air India\nFlight: AI 131' };
   const empty = { type: 'flight' as const, title: '', ref: '', start: '', end: '', place: '', notes: '' };

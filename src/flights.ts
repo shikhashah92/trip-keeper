@@ -58,7 +58,10 @@ function flightMarks(t: string): { no: string; code: string; at: number }[] {
     // "AI 123" yes; "AI 2026" is probably a year, and a time like "AI 06:15" is not a number at all.
     if (+m[2] > 9999 || (m[2].length === 4 && +m[2] >= 1900 && +m[2] <= 2100 && !/flight|flt/i.test(t.slice(Math.max(0, m.index - 12), m.index)))) continue;
     const next = t[m.index + m[0].length];
-    if (next === ':' || next === '.') continue;
+    if (next === ':' || next === '.' || (next === '-' && /\d/.test(t[m.index + m[0].length + 1] ?? ''))) continue;
+    // "Airbus A350", "Boeing 737": the aircraft, even where its letters are also an airline's code.
+    if (/airbus|boeing|embraer|aircraft|atr|bombardier|canadair|equipment/i.test(t.slice(Math.max(0, m.index - 14), m.index))) continue;
+    if (/^A[1-3]$/.test(c) && m[0] === c + m[2] && m[2].length === 2) continue; // A318 ... A388 written without a space: an aircraft, not Aegean
     const no = `${c} ${+m[2]}`;
     if (seen.has(no)) continue;
     seen.add(no);
@@ -81,6 +84,8 @@ function airportsIn(s: string): { code: string; name: string }[] {
     add(m[2], /^(departure|arrival|airport|terminal|flight|gate)$/i.test(name) || name.length < 3 ? '' : name);
   }
   if (out.length < 2) for (const m of s.matchAll(/\b([A-Z]{3})\s*(?:→|->|–|—|-|to)\s*([A-Z]{3})\b/g)) { add(m[1]); add(m[2]); }
+  // A code alone on its line, the way app screens and some e-tickets print it.
+  if (out.length < 2) for (const m of s.matchAll(/^[ \t]*([A-Z]{3})[ \t]*$/gm)) if (AIRPORTS[m[1]]) add(m[1]);
   // No codes: look for city names, in the order they appear.
   if (out.length < 2) for (const m of s.matchAll(CITY_RX)) { const c = CITY_CODE[m[1].toLowerCase()]; if (c) add(c, AIRPORTS[c]?.replace(/\s*\(.*\)\s*$/, '') ?? ''); }
   return out;
@@ -99,14 +104,26 @@ function detailsOf(seg: string, all: string): { lines: string[]; passengers: str
   const passengers = [...people.values()];
   const seat = first(seg, /\bseat(?:\s*(?:no\.?|number))?\s*[:#-]?\s*(\d{1,2}\s?[A-K])\b/i) ?? first(all, /\bseat(?:\s*(?:no\.?|number))?\s*[:#-]?\s*(\d{1,2}\s?[A-K])\b/i);
   const cabin = first(seg, /\b(premium economy|economy|business|first)(?:\s+class)?\b/i) ?? first(all, /\b(premium economy|economy|business|first)(?:\s+class)?\b/i);
-  const bag = first(all, /(?:check-?in\s+|checked\s+|hand\s+|cabin\s+)?baggage\s*(?:allowance)?\s*[:\-]?\s*(\d{1,3}\s?(?:kg|kgs|pcs?|pieces?)(?:[^\n]{0,24})?)/i);
+  const cabinBag = first(seg, /\b(?:cabin|hand)(?:\s+baggage)?\s*[:\-]?\s*(\d{1,3}\s?kgs?)\b/i) ?? first(all, /\b(?:cabin|hand)(?:\s+baggage)?\s*[:\-]?\s*(\d{1,3}\s?kgs?)\b/i);
+  const checkedBag = first(seg, /\b(?:checked|check-?in)(?:\s+baggage)?\s*[:\-]?\s*(\d{1,3}\s?(?:kgs?|pcs?|pieces?))\b/i) ?? first(all, /\b(?:checked|check-?in)(?:\s+baggage)?\s*[:\-]?\s*(\d{1,3}\s?(?:kgs?|pcs?|pieces?))\b/i);
+  const bag = cabinBag || checkedBag ? undefined : first(all, /baggage\s*(?:allowance)?\s*[:\-]?\s*(\d{1,3}\s?(?:kg|kgs|pcs?|pieces?)(?:[^\n]{0,24})?)/i);
+  const aircraft = first(seg, /\b((?:airbus|boeing|embraer|atr|bombardier)[ ]+[A-Za-z]?\d[A-Za-z0-9-]*(?:[ ]+[A-Za-z0-9-]+)?)/i);
+  const dur = seg.match(/\b(\d{1,2})\s?h(?:rs?|ours?)?\s?(\d{1,2})\s?m(?:in(?:s|utes)?)?\b(?:\s*[•·|,-]\s*(non[- ]?stop|\d+\s?stops?))?/i);
+  const status = first(seg, /\bstatus\s*[:\-]?\s*(confirmed|ticketed|cancelled|canceled|waitlisted|pending|on time|delayed)\b/i) ?? first(all, /\bstatus\s*[:\-]?\s*(confirmed|ticketed|cancelled|canceled|waitlisted|pending)\b/i);
+  const fare = first(seg, /\bfare(?:\s+type)?\s*[:\-]?\s*([A-Za-z][A-Za-z ]{1,18}?)(?=\s*(?:\n|$|seat|cabin|checked|baggage))/i);
   const ticket = first(all, /ticket\s*(?:number|no\.?|#)\s*[:#-]?\s*(\d{3}[\s-]?\d{9,10})/i);
   const gate = first(seg, /\bgate\s*[:#-]?\s*([A-Z]?\d{1,3}[A-Z]?)\b/i);
   const meal = first(all, /\bmeal\s*[:\-]\s*([A-Za-z ]{3,24})/i);
   if (seat) lines.push(`Seat: ${seat.replace(/\s/g, '')}`);
   if (cabin) lines.push(`Class: ${cabin[0].toUpperCase()}${cabin.slice(1).toLowerCase()}`);
   if (gate) lines.push(`Gate: ${gate}`);
+  if (cabinBag) lines.push(`Cabin baggage: ${cabinBag.replace(/\s+/g, ' ')}`);
+  if (checkedBag) lines.push(`Checked baggage: ${checkedBag.replace(/\s+/g, ' ')}`);
   if (bag) lines.push(`Baggage: ${bag}`);
+  if (aircraft) lines.push(`Aircraft: ${aircraft}`);
+  if (dur) lines.push(`Duration: ${+dur[1]}h ${dur[2].padStart(2, '0')}m${dur[3] ? `, ${/^non/i.test(dur[3]) ? 'non-stop' : dur[3].toLowerCase()}` : ''}`);
+  if (fare && !/breakup|summary|rules|details|amount|total|tax|basic/i.test(fare)) lines.push(`Fare: ${fare}`);
+  if (status) lines.push(`Status: ${status[0].toUpperCase()}${status.slice(1).toLowerCase()}`);
   if (meal) lines.push(`Meal: ${meal}`);
   if (ticket) lines.push(`Ticket: ${ticket.replace(/[\s]/g, '')}`);
   return { lines, passengers: passengers.slice(0, 6) };
