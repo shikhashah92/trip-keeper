@@ -120,25 +120,51 @@ async function openPdf(f: Source) {
   }
 }
 
-/** Draw every page of a PDF into `el`, as wide as it is. This is the in-app viewer: no new tab, no plugin, works offline. */
+/** Selection colour for the text layer, added once. Everything else about the layer is set on its elements. */
+let textStyle = false;
+function ensureTextStyle() {
+  if (textStyle) return;
+  textStyle = true;
+  const st = document.createElement('style');
+  st.textContent = '.tk-text span::selection{background:rgba(15,118,110,.35);color:transparent}.tk-text span{color:transparent}';
+  document.head.appendChild(st);
+}
+
+/**
+ * Draw every page of a PDF into `el`, as wide as it is. This is the in-app viewer: no new tab, no plugin, works offline.
+ * Each page has its text laid over it, invisible but real, so a word or a line can be selected and copied like in any PDF viewer.
+ */
 export async function renderPdfInto(f: Source, el: HTMLElement, progress: Progress = () => {}): Promise<void> {
   const doc = await openPdf(f);
+  ensureTextStyle();
   const width = Math.max(280, el.clientWidth || 360);
   const dpr = Math.min(2, window.devicePixelRatio || 1);
   for (let n = 1; n <= Math.min(doc.numPages, 40); n++) {
     progress(doc.numPages > 1 ? `Page ${n} of ${doc.numPages}` : '');
     const page = await doc.getPage(n);
     const base = page.getViewport({ scale: 1 });
-    const view = page.getViewport({ scale: (width / base.width) * dpr });
+    const css = page.getViewport({ scale: width / base.width }); // the size on screen, which the text is laid out for
+    const view = page.getViewport({ scale: (width / base.width) * dpr }); // the sharper size the picture is drawn at
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'position:relative;margin-bottom:12px;line-height:1';
     const c = document.createElement('canvas');
     c.width = Math.round(view.width);
     c.height = Math.round(view.height);
-    c.style.cssText = 'width:100%;height:auto;display:block;margin-bottom:12px;background:#fff;border-radius:6px';
+    c.style.cssText = 'width:100%;height:auto;display:block;background:#fff;border-radius:6px';
+    const layer = document.createElement('div');
+    layer.className = 'tk-text';
+    layer.style.cssText = `position:absolute;left:0;top:0;width:${Math.round(css.width)}px;height:${Math.round(css.height)}px;overflow:hidden;line-height:1;` +
+      'user-select:text;-webkit-user-select:text;-webkit-touch-callout:default;text-size-adjust:none;opacity:1';
+    layer.style.setProperty('--scale-factor', String(css.scale));
+    wrap.append(c, layer);
+    el.appendChild(wrap);
     await page.render({ canvasContext: c.getContext('2d')!, viewport: view }).promise;
-    el.appendChild(c);
+    try {
+      await w.pdfjsLib.renderTextLayer({ textContentSource: await page.getTextContent(), container: layer, viewport: css, textDivs: [] }).promise;
+      layer.querySelectorAll('span').forEach((sp) => { const e = sp as HTMLElement; e.style.cssText += ';position:absolute;white-space:pre;cursor:text;transform-origin:0% 0%;color:transparent'; });
+    } catch { /* the page is still drawn; only selecting its text is lost */ }
   }
 }
-
 /**
  * The text of a PDF from its own text layer, read two ways: as rows by position (a table reads left to right) and in
  * the order it was drawn (a card drawn a column at a time reads top to bottom). Scanned pages fall back to OCR.

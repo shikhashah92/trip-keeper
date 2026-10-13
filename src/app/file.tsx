@@ -1,7 +1,7 @@
 import { createElement, useEffect, useState } from 'react';
 import { ActivityIndicator, Image, View } from 'react-native';
 import { getViewing } from '../handoff';
-import { isImage, isPdf, renderPdfInto } from '../reader';
+import { isImage, isPdf, readFileTexts, renderPdfInto } from '../reader';
 import { notify, saveFile } from '../io';
 import { goBack } from '../components';
 import { useTheme } from '../store';
@@ -16,6 +16,7 @@ export default function FileViewer() {
   const [busy, setBusy] = useState(() => !!f && isPdf(f));
   const [note, setNote] = useState('');
   const [failed, setFailed] = useState('');
+  const [copying, setCopying] = useState(false);
 
   useEffect(() => {
     if (!f || !isPdf(f) || !holder) return;
@@ -27,6 +28,18 @@ export default function FileViewer() {
       .finally(() => live && setBusy(false));
     return () => { live = false; };
   }, [f, holder]);
+
+  /** All the text of the file on the clipboard (a screenshot is read first), for pasting into a message or a note. */
+  async function copyText() {
+    if (!f) return;
+    setCopying(true);
+    try {
+      const text = (await readFileTexts(f))[0];
+      await navigator.clipboard.writeText(text);
+      notify('Text copied', 'The text of this file is on your clipboard.');
+    } catch (e) { notify('Could not copy the text', (e as Error).message); }
+    finally { setCopying(false); }
+  }
 
   /** Save to Files, or the share sheet on a phone. */
   async function save() {
@@ -53,6 +66,7 @@ export default function FileViewer() {
         </>
       ) : <T>This kind of file can’t be shown here. Save it to open it in another app.</T>}
       <Gap />
+      {isPdf(f) || isImage(f) ? <><Button title={copying ? 'Reading…' : 'Copy text'} icon="copy-outline" kind="secondary" onPress={copyText} disabled={copying} /><Gap h={space.sm} /></> : null}
       <Button title="Save or share" icon="share-outline" kind="secondary" onPress={save} />
     </Screen>
   );
