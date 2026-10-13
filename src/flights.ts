@@ -66,6 +66,7 @@ const code = (c: string) => (AIRPORTS[c] ? `${AIRPORTS[c]} (${c})` : c);
 
 export interface FlightSegment extends Parsed { flightNo: string; airline?: string; from?: string; to?: string }
 
+const HAS_DATE = /\d{4}-\d{2}-\d{2}|\d{1,2}[\s.-]*(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{1,2}|\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}/i;
 const FLIGHT_NO = /\b([A-Z0-9]{2})[\s-]?(\d{1,4})\b/g;
 
 interface Mark { no: string; code: string; at: number; name?: string }
@@ -160,13 +161,28 @@ function detailsOf(seg: string, all: string): { lines: string[]; passengers: str
   return { lines, passengers: passengers.slice(0, 6) };
 }
 
-/** Terminals for the two airports of a segment: "Terminal 2", "T2", "Term. 1B", in the order they appear. */
-function terminalsIn(s: string): string[] {
-  const out: string[] = [];
-  for (const m of s.matchAll(/\bterminal\s*[:#-]?\s*([0-9][A-Z]?|[A-E])\b|\bterm\.?\s*([0-9][A-Z]?)\b|\bT([1-9])\b/gi)) out.push((m[1] ?? m[2] ?? m[3]).toUpperCase());
+/**
+ * The departure and the arrival terminal: "Terminal 2", "T2", "Term. 1B". A terminal is the departure's when "from" or
+ * "departure" comes just before it, the arrival's after "to" or "arrival"; otherwise the first one found is the
+ * departure's and the second the arrival's.
+ */
+function terminalsIn(s: string): { dep?: string; arr?: string } {
+  const found: { v: string; ctx: string }[] = [];
+  for (const m of s.matchAll(/\bterminal\s*[:#-]?\s*([0-9][A-Z]?|[A-E])\b|\bterm\.?\s*([0-9][A-Z]?)\b|\bT([1-9])\b/gi)) {
+    found.push({ v: (m[1] ?? m[2] ?? m[3]).toUpperCase(), ctx: s.slice(Math.max(0, m.index - 40), m.index).toLowerCase() });
+  }
+  const out: { dep?: string; arr?: string } = {};
+  const rest: typeof found = [];
+  for (const f of found) {
+    const dep = Math.max(f.ctx.lastIndexOf('depart'), f.ctx.lastIndexOf('from'), f.ctx.lastIndexOf('origin'));
+    const arr = Math.max(f.ctx.lastIndexOf('arriv'), f.ctx.lastIndexOf('landing'), f.ctx.lastIndexOf(' to '), f.ctx.lastIndexOf('destination'));
+    if (arr > dep && !out.arr) out.arr = f.v;
+    else if (dep > arr && !out.dep) out.dep = f.v;
+    else rest.push(f);
+  }
+  for (const f of rest) { if (!out.dep) out.dep = f.v; else if (!out.arr) out.arr = f.v; }
   return out;
 }
-
 /**
  * One booking per flight found in the ticket. The text between a flight number and the next one belongs to that
  * flight, so a table row, a block per flight, and a header-then-details layout all split the same way. With no
@@ -176,13 +192,22 @@ export function parseFlights(text: string): FlightSegment[] {
   const t = text.replace(/\r/g, '');
   const marks = flightMarks(t);
   const ref = findRef(t);
-  const spans = marks.length > 1
-    ? marks.map((m, i) => ({ mark: m, text: t.slice(i === 0 ? 0 : m.at, marks[i + 1]?.at ?? t.length) }))
-    : [{ mark: marks[0], text: t }];
+  // The first flight's block starts at its flight number: whatever is above it is the header (booking date, passengers,
+  // reference), whose dates are not the trip's. Only if nothing below it has a date is the header used.
+  // `pre` is what was cut off: a route printed above the flight number is still looked at for the airports.
+  const spans: { mark: Mark | undefined; text: string; pre: string }[] = marks.length
+    ? marks.map((m, i) => {
+      const end = marks[i + 1]?.at ?? t.length;
+      const block = t.slice(m.at, end);
+      if (i > 0 || !HAS_DATE.test(block)) return { mark: m, text: i > 0 ? block : t.slice(0, end), pre: '' };
+      return { mark: m, text: block, pre: t.slice(0, m.at) };
+    })
+    : [{ mark: undefined, text: t, pre: '' }];
   const out: FlightSegment[] = [];
   for (const sp of spans) {
     const base = parsePaste(sp.text, 'flight');
-    const ports = airportsIn(sp.text);
+    let ports = airportsIn(sp.text);
+    if (ports.length < 2 && sp.pre) ports = airportsIn(`${sp.pre}\n${sp.text}`); // a route printed above the flight number
     const from = ports[0], to = ports[1];
     const no = sp.mark?.no ?? '';
     if (spans.length > 1 && !base.start && !from) continue; // a flight number in the small print, with nothing about a trip
@@ -192,14 +217,17 @@ export function parseFlights(text: string): FlightSegment[] {
     const airline = sp.mark ? AIRLINES[sp.mark.code] ?? sp.mark.name : undefined;
     if (airline) lines.push(`Airline: ${airline}`);
     if (no) lines.push(`Flight: ${no}`);
-    if (from) lines.push(`From: ${from.name ? `${from.name} (${from.code})` : code(from.code)}${term[0] ? `, Terminal ${term[0]}` : ''}`);
-    if (to) lines.push(`To: ${to.name ? `${to.name} (${to.code})` : code(to.code)}${term[1] ? `, Terminal ${term[1]}` : ''}`);
+    // The airports and their terminals each on their own line, so a terminal is a thing of its own to look for.
+    if (from) lines.push(`From: ${from.name ? `${from.name} (${from.code})` : code(from.code)}`);
+    if (term.dep) lines.push(`Departure terminal: ${term.dep}`);
+    if (to) lines.push(`To: ${to.name ? `${to.name} (${to.code})` : code(to.code)}`);
+    if (term.arr) lines.push(`Arrival terminal: ${term.arr}`);
     if (d.passengers.length) lines.push(`Passenger${d.passengers.length > 1 ? 's' : ''}: ${d.passengers.join(', ')}`);
     lines.push(...d.lines);
     const title = `${no ? `${no} ` : ''}${from && to ? `${from.code} → ${to.code}` : ''}`.trim() || base.title;
     out.push({
       ...base, type: 'flight', ref: base.ref ?? ref, title,
-      place: from ? `${from.name || AIRPORTS[from.code] || ''}${from.name || AIRPORTS[from.code] ? ' ' : ''}(${from.code})${term[0] ? ` Terminal ${term[0]}` : ''}` : base.place,
+      place: from ? `${from.name || AIRPORTS[from.code] || ''}${from.name || AIRPORTS[from.code] ? ' ' : ''}(${from.code})${term.dep ? ` Terminal ${term.dep}` : ''}` : base.place,
       notes: lines.join('\n') || undefined, flightNo: no, airline, from: from?.code, to: to?.code,
       ...(from && AIRPORT_TZ[from.code] ? { startTz: AIRPORT_TZ[from.code] } : {}), ...(to && AIRPORT_TZ[to.code] ? { endTz: AIRPORT_TZ[to.code] } : {}),
     });

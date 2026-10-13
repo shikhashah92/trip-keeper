@@ -206,7 +206,8 @@ test('a ticket with several flights becomes one booking per flight, with the det
   assert.equal(a.end, '2026-11-07T08:35');
   assert.equal(a.place, 'Mumbai (BOM) Terminal 2');
   assert.ok(a.notes?.includes('Airline: IndiGo') && a.notes.includes('Flight: 6E 521') && a.notes.includes('Seat: 12A'));
-  assert.ok(a.notes?.includes('To: Delhi (DEL), Terminal 3'));
+  assert.ok(a.notes?.includes('Departure terminal: 2') && a.notes.includes('Arrival terminal: 3'), 'terminals are their own lines');
+  assert.ok(a.notes?.includes('To: Delhi (DEL)'));
   assert.ok(a.notes?.includes('Passenger: MR RAHUL SHARMA'));
   assert.equal(b.title, '6E 2104 DEL → IXL');
   assert.equal(b.start, '2026-11-07T11:05');
@@ -275,7 +276,7 @@ test('an airline app ticket: time above the date, codes on their own lines, an A
   assert.equal(f.end, '2026-10-24T00:45');
   assert.equal(f.guessed, undefined);
   assert.equal(f.place, 'Mumbai (BOM) Terminal 2');
-  for (const line of ['Airline: Etihad', 'Flight: EY 205', 'From: Mumbai (BOM), Terminal 2', 'To: Abu Dhabi (AUH), Terminal A', 'Seat: 26A',
+  for (const line of ['Airline: Etihad', 'Flight: EY 205', 'From: Mumbai (BOM)', 'Departure terminal: 2', 'To: Abu Dhabi (AUH)', 'Arrival terminal: A', 'Seat: 26A',
     'Cabin baggage: 7kg', 'Checked baggage: 30kg', 'Aircraft: Airbus A350-1000', 'Duration: 3h 05m, non-stop', 'Fare: Value', 'Status: Confirmed']) {
     assert.ok(f.notes?.split('\n').includes(line), `notes should have "${line}", got:\n${f.notes}`);
   }
@@ -351,11 +352,54 @@ test('the same ticket read as rows by position gives the same flight, and the be
   assert.equal(f.title, 'EY 205 BOM → AUH');
   assert.equal(f.start, '2026-10-23T23:10');
   assert.equal(f.end, '2026-10-24T00:45');
-  assert.ok(f.notes?.includes('From: Mumbai (BOM), Terminal 2') && f.notes.includes('To: Abu Dhabi (AUH), Terminal A'));
+  assert.ok(f.notes?.includes('Departure terminal: 2') && f.notes.includes('Arrival terminal: A'));
   // given a muddled reading and a clean one, the clean one is used whichever comes first
   const muddled = 'Terminal 2\nTerminal A\nSeat 26A\nAirbus A350-1000';
   assert.equal(parseBest([muddled, rows]).index, 1);
   assert.equal(parseBest([rows, muddled]).index, 0);
+});
+
+test('the booking date is never the flight date, however the ticket labels it', () => {
+  const TICKET = APP_TICKET.split('\n');
+  const cases: [string, string[]][] = [
+    ['label above the date', ['Etihad Airways', 'Booking confirmation', 'Booking date', '19 Aug 2026', 'Booking reference', 'A1B2C3']],
+    ['label below the date', ['Etihad Airways', 'Booking reference ABC123', '19 Aug 2026', 'Booking date']],
+    ['"Booked" with no "on"', ['Etihad Airways', 'Booked 19 Aug 2026 18:22']],
+    ['"Issued on" on the same line', ['Etihad Airways', 'Issued on: 19 Aug 2026']],
+    ['no label at all, only above the flight', ['Etihad e-ticket', '19 Aug 2026']],
+    ['the date printed twice, once with its label', ['Date of booking: 19 Aug 2026', 'Etihad Airways', '19 Aug 2026']],
+  ];
+  for (const [what, header] of cases) {
+    const [f] = parseDocument([...header, ...TICKET].join('\n'));
+    assert.equal(f.start, '2026-10-23T23:10', what);
+    assert.equal(f.end, '2026-10-24T00:45', what);
+    assert.equal(f.title, 'EY 205 BOM → AUH', what);
+  }
+  // a route printed above the flight number is still the route
+  const routed = parseDocument(['Booked on 19 Aug 2026', 'Mumbai (BOM) → Abu Dhabi (AUH)', 'EY 205 • Etihad', '23:10', '23 Oct 2026', '00:45', '24 Oct 2026'].join('\n'));
+  assert.equal(routed[0].title, 'EY 205 BOM → AUH');
+  assert.equal(routed[0].start, '2026-10-23T23:10');
+  // outside flights too: a hotel confirmation with the date it was made
+  const hotel = parsePaste(['Hotel Arts', 'Booking date', '19 Aug 2026', 'Check-in: 24 Oct 2026 3:00 PM', 'Check-out: 27 Oct 2026 11:00'].join('\n'));
+  assert.equal(hotel.start, '2026-10-24T15:00');
+  assert.equal(hotel.end, '2026-10-27T11:00');
+});
+
+test('departure and arrival terminals are their own categories, and a lone terminal goes to the right end', () => {
+  const lines = (n?: string) => (n ?? '').split('\n');
+  // labelled "from ... to ...", with the terminals in either order of appearance
+  const both = parseDocument(['EY 205 • Etihad', 'To: Abu Dhabi (AUH) Terminal A', 'From: Mumbai (BOM) Terminal 2', 'Departure 23 Oct 2026 23:10', 'Arrival 24 Oct 2026 00:45'].join('\n'))[0];
+  assert.ok(lines(both.notes).includes('Departure terminal: 2'));
+  assert.ok(lines(both.notes).includes('Arrival terminal: A'));
+  // only the arrival terminal is given: it is not mistaken for the departure's
+  const arrOnly = parseDocument(['EY 205 • Etihad', 'Mumbai (BOM) → Abu Dhabi (AUH)', 'Departure 23 Oct 2026 23:10', 'Arrival 24 Oct 2026 00:45 Terminal A'].join('\n'))[0];
+  assert.ok(lines(arrOnly.notes).includes('Arrival terminal: A'));
+  assert.ok(!lines(arrOnly.notes).some((l) => l.startsWith('Departure terminal')));
+  assert.equal(arrOnly.place, 'Mumbai (BOM)', 'no terminal on the place when the departure terminal is unknown');
+  // the place carries the departure terminal; the airports are lines of their own
+  const f = parseDocument(APP_TICKET)[0];
+  assert.equal(f.place, 'Mumbai (BOM) Terminal 2');
+  assert.ok(lines(f.notes).includes('From: Mumbai (BOM)') && lines(f.notes).includes('To: Abu Dhabi (AUH)'));
 });
 
 test('notes from a file are added below what is there, never over it', () => {

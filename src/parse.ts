@@ -41,8 +41,8 @@ export function classify(text: string): BookingType {
 }
 
 // A date on a line like these is when the booking was made or paid, not when the trip happens.
-const NOT_TRIP = /booked on|booking date|date of booking|\bissued?\b|issue date|date of issue|invoice|payment|paid on|printed|generated|created|order date|transaction|purchased?|date of birth|\bdob\b|valid (till|until)|expir|cancel(?:lation)? (?:by|before|until)/i;
-const TRIP = /depart|arriv|check-?in|check-?out|pick-?up|drop-?off|\bfrom\b|\bto\b|travel|journey|start|\bend\b|onward|return|stay|dates?\b/i;
+const NOT_TRIP = /\bbooked\b|booking (?:date|time|made|on)|date of booking|reservation date|\bissued?\b|issue date|date of issue|ticketed on|confirmed on|confirmation date|invoice|\bbill\b|receipt|payment|paid on|printed|generated|created|order date|purchase|transaction|date of birth|\bdob\b|valid (?:till|until)|expir|cancel(?:lation)? (?:by|before|until)/i;
+const TRIP = /depart|arriv|check-?in|check-?out|pick-?up|drop-?off|\bfrom\b|\bto\b|travel|journey|start|\bend\b|onward|return|stay/i;
 const REF_STOP = /^(CONFIRMED|CONFIRMATION|BOOKING|RESERVATION|DEPARTURE|ARRIVAL|DETAILS|NUMBER|TICKET|STATUS|PASSENGER|ITINERARY|REFERENCE|SUMMARY|RECEIPT)$/;
 const LABEL = /^(?:departure|arrival|depart(?:s|ing)?|arrive(?:s)?|from|to|origin|destination|airport)[\s:.-]*/i;
 
@@ -95,7 +95,28 @@ export function parsePaste(text: string, forceType?: BookingType): Parsed {
   }
   found.sort((a, b) => a.i - b.i);
   // Dates on "booked on" or "payment" lines are not the trip. If that leaves nothing, keep them all.
-  const trip = found.filter((f) => { const ln = lineAt(f.i); return !(NOT_TRIP.test(ln) && !TRIP.test(ln)); });
+  // A date is the booking's, not the trip's, when a booking label is on its line, or sits alone on its line under or
+  // over such a label ("Booking date" / "19 Aug 2026"). That date is then left out wherever else it appears, unless that
+  // place is plainly about the trip.
+  const short = (x: string) => x.trim().length <= 32;
+  const aboutBooking = (f: { i: number }) => {
+    const ls = t.lastIndexOf('\n', f.i) + 1;
+    let le = t.indexOf('\n', f.i);
+    if (le < 0) le = t.length;
+    const cur = t.slice(ls, le);
+    if (NOT_TRIP.test(cur) && !TRIP.test(cur)) return true;
+    // Only a line that is just a date (and maybe a time) is described by the lines around it; a date inside a longer
+    // line, like "Departure: 07 Nov 2026 06:15", is described by that line.
+    const rest = cur.replace(/\b(?:mon|tue|wed|thu|fri|sat|sun|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|am|pm|hrs?|st|nd|rd|th)[a-z]*\b/gi, '');
+    if (/[A-Za-z]/.test(rest) || !short(cur)) return false;
+    const prev = ls > 1 ? t.slice(t.lastIndexOf('\n', ls - 2) + 1, ls - 1) : '';
+    let ne = t.indexOf('\n', le + 1);
+    if (ne < 0) ne = t.length;
+    const next = t.slice(le + 1, ne);
+    return (short(prev) && NOT_TRIP.test(prev) && !TRIP.test(prev)) || (short(next) && NOT_TRIP.test(next) && !TRIP.test(next));
+  };
+  const madeOn = new Set(found.filter(aboutBooking).map((f) => f.date));
+  const trip = found.filter((f) => !aboutBooking(f) && !(madeOn.has(f.date) && !TRIP.test(lineAt(f.i))));
   const dates = trip.length ? trip : found;
 
   // Times, as tickets write them: 06:15, 6:15 PM, 10 AM, 06.15 hrs, 0615 hrs, and 06;15 (what OCR makes of a colon).
