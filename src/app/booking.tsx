@@ -1,17 +1,27 @@
-import { useMemo, useState } from 'react';
-import { View } from 'react-native';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useLog, useTheme } from '../store';
-import { BOOKING_TYPES, delAttachment, delBooking, filesOf, newId, putBooking, type BookingType } from '../model';
-import type { Parsed } from '../parse';
+import { BOOKING_TYPE, BOOKING_TYPES, delAttachment, delBooking, filesOf, newId, putBooking, type BookingType } from '../model';
+import { diffBooking, parsePaste, type Change, type Current, type Parsed } from '../parse';
+import { canRead, readFileText } from '../reader';
+import { clearHandOff, peekHandOff } from '../handoff';
 import { confirm, notify, openAttachment, pickFiles, type Picked } from '../io';
 import { goBack } from '../components';
 import { DateTimeField } from '../DateField';
 import { Button, Card, Chip, Field, Gap, Header, IconButton, Row, Screen, T } from '../ui';
 import { space } from '../theme';
 
-/** Add or edit a booking, with its documents. `prefill` is what "Add from a pasted confirmation" found (JSON). */
+const LABEL: Record<Change['field'], string> = { type: 'Type', title: 'Title', ref: 'Reference', start: 'Starts', end: 'Ends', place: 'Place' };
+// With the year: a ticket read for the wrong year is the mistake worth catching here.
+const stamp = (v: string) => new Date(v).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
+const show = (field: Change['field'], v: string) => (!v ? '(empty)' : field === 'start' || field === 'end' ? stamp(v) : field === 'type' ? BOOKING_TYPE(v).label : v);
+
+/**
+ * Add or edit a booking, with its documents. `prefill` is what "Add from a pasted confirmation" found (JSON).
+ * Attaching a PDF or screenshot reads it on the phone and offers to fill in, or update, the details.
+ */
 export default function BookingScreen() {
   const { id, prefill } = useLocalSearchParams<{ id?: string; prefill?: string }>();
   const { log, update, addFile, readFile } = useLog();
@@ -26,13 +36,57 @@ export default function BookingScreen() {
   const [place, setPlace] = useState(old?.place ?? pre.place ?? '');
   const [notes, setNotes] = useState(old?.notes ?? '');
   const [removed, setRemoved] = useState<string[]>([]);
-  const [added, setAdded] = useState<Picked[]>([]);
+  const [added, setAdded] = useState<Picked[]>(() => peekHandOff()); // from "Add from a PDF or screenshot"
+  const [reading, setReading] = useState<string | null>(null);
   const kept = old ? filesOf(log, old.id).filter((a) => !removed.includes(a.id)) : [];
+
+  // What the form holds now, for a file that finishes reading a few seconds from now.
+  const now = useRef<Current>({ type, title, ref, start, end, place });
+  useEffect(() => { now.current = { type, title, ref, start, end, place }; });
+
+  /** Read the first readable file and, if it has something to add or change, ask before touching the form. */
+  async function readFrom(list: Picked[]) {
+    const f = list.find(canRead);
+    if (!f) return; // a Word file and the like: attached, but there is nothing to read
+    setReading(`Reading “${f.name}”…`);
+    try {
+      const p = parsePaste(await readFileText(f, (m) => setReading(m)));
+      const changes = diffBooking(now.current, p, !old);
+      if (!changes.length) return notify('Nothing to fill in', `“${f.name}” was read, but it didn’t give anything new for this booking.`);
+      const lines = changes.map((ch) => `${LABEL[ch.field]}: ${ch.from ? `${show(ch.field, ch.from)} → ` : ''}${show(ch.field, ch.to)}${ch.guessed ? ' (time not found, please check)' : ''}`);
+      const ok = await confirm(old ? 'Update from this file?' : 'Fill in from this file?', `${lines.join('\n')}\n\nCheck these before you save.`, old ? 'Update' : 'Fill in');
+      if (!ok) return;
+      for (const ch of changes) {
+        if (ch.field === 'type') setType(ch.to as BookingType);
+        else if (ch.field === 'title') setTitle(ch.to);
+        else if (ch.field === 'ref') setRef(ch.to);
+        else if (ch.field === 'start') setStart(ch.to);
+        else if (ch.field === 'end') setEnd(ch.to);
+        else setPlace(ch.to);
+      }
+    } catch (e) {
+      notify('Couldn’t read this file', `${(e as Error).message} It is still attached, so you can fill in the details by hand.`);
+    } finally {
+      setReading(null);
+    }
+  }
+
+  // Files handed over from the Bookings tab are read as soon as the form opens (once, even when effects run twice).
+  const started = useRef(false);
+  useEffect(() => {
+    if (started.current) return;
+    started.current = true;
+    const files = peekHandOff();
+    clearHandOff();
+    if (files.length) setTimeout(() => readFrom(files), 0); // after the form has painted, so it shows "Reading…"
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function attach() {
     try {
       const picked = await pickFiles();
+      if (!picked.length) return;
       setAdded((a) => [...a, ...picked]);
+      readFrom(picked);
     } catch (e) { notify('Could not attach', (e as Error).message); }
   }
   async function open(fileId: string, name: string, mime: string) {
@@ -41,6 +95,7 @@ export default function BookingScreen() {
     openAttachment(data, mime);
   }
   function save() {
+    if (reading) return notify('Still reading the file', 'This takes a few seconds. Save when it finishes.');
     if (!title.trim()) return notify('Add a title', 'For example “AI 123 Mumbai to Madrid”.');
     if (start && end && end < start) return notify('Check the dates', 'It ends before it starts.');
     const bid = old?.id ?? newId('b');
@@ -60,6 +115,15 @@ export default function BookingScreen() {
   return (
     <Screen edges={['top', 'bottom']}>
       <Header title={old ? 'Edit booking' : 'Add booking'} left={<IconButton icon="close" label="Close" onPress={goBack} />} />
+      {reading ? (
+        <>
+          <Card style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
+            <ActivityIndicator color={c.accent} />
+            <T style={{ flex: 1 }}>{reading}</T>
+          </Card>
+          <Gap />
+        </>
+      ) : null}
       <T v="label">Type</T>
       <Gap h={space.sm} />
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space.sm }}>
@@ -97,9 +161,10 @@ export default function BookingScreen() {
         </Card>
       ) : <T v="small">No files attached.</T>}
       <Gap h={space.sm} />
-      <Button title="Attach files" icon="attach" kind="secondary" onPress={attach} />
+      <Button title="Attach files" icon="attach" kind="secondary" onPress={attach} disabled={!!reading} />
+      <T v="small" style={{ marginTop: space.sm }}>A PDF or screenshot is read on this phone to fill in the details. It is not sent anywhere.</T>
       <Gap h={24} />
-      <Button title="Save" onPress={save} />
+      <Button title="Save" onPress={save} disabled={!!reading} />
       {old ? <><Gap h={12} /><Button title="Delete booking" kind="danger" onPress={remove} /></> : null}
     </Screen>
   );

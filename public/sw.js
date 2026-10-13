@@ -1,10 +1,11 @@
 // Trip Keeper service worker: the app opens instantly and works offline. Data itself lives in IndexedDB, not here.
 // Everything is relative to the worker's scope, so it works at a domain's root or in a sub-folder.
 // ponytail: old hashed bundles are dropped only when CACHE is bumped; fine for a few-MB app.
-const CACHE = 'trip-keeper-v1';
+const CACHE = 'trip-keeper-v2';
 const ROOT = new URL(self.registration.scope).pathname; // "/" on the app's own domain
 const at = (p) => ROOT + p;
-const SHELL = ['', 'manifest.webmanifest', 'icon-192.png', 'apple-touch-icon.png', 'favicon.svg', 'fonts/Archivo-latin.woff2'].map(at);
+const SHELL = ['', 'manifest.webmanifest', 'icon-192.png', 'apple-touch-icon.png', 'favicon.svg', 'fonts/Archivo-latin.woff2',
+  'vendor/pdf/pdf.min.js', 'vendor/pdf/pdf.worker.min.js'].map(at);
 
 self.addEventListener('install', (e) => {
   e.waitUntil((async () => {

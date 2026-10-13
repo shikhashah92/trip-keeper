@@ -6,7 +6,7 @@ import {
   putTrip, spend, summary, todayView, addAttachment, validTripDates, type Log,
 } from '../src/model.ts';
 import { buildIcs, fold, planHtml, planText } from '../src/ics.ts';
-import { parsePaste } from '../src/parse.ts';
+import { diffBooking, parsePaste } from '../src/parse.ts';
 import { csvCell, parseBackup, pushSnapshot, serialize, toBackupJSON, toCSV } from '../src/backup.ts';
 import { decryptEnvelope, deriveKey, encryptWithKey, isEnvelope, newSalt } from '../src/crypto.ts';
 import { checkPin, makePin } from '../src/pin.ts';
@@ -96,6 +96,31 @@ test('paste import reads the reference, start and end', () => {
   assert.equal(p.place, 'Carrer de la Marina 19, Barcelona');
   assert.equal(p.title, 'Hotel Arts confirmation');
   assert.equal(parsePaste('Your flight\nPNR: ZZ99QQ\nDeparts 5 Nov 2026 at 6:10 PM').type, 'flight');
+});
+
+test('a ticket PDF lays the time under the date: still found, and a missing time is flagged', () => {
+  const ticket = ['AIR INDIA', 'Booking reference: XK92LM', 'Departure (BOM)', 'Fri, 23 Oct 2026', '02:40',
+    'Arrival (MAD)', 'Fri, 23 Oct 2026', '07:55 AM', 'Flight AI 123'].join('\n');
+  const p = parsePaste(ticket);
+  assert.equal(p.type, 'flight');
+  assert.equal(p.ref, 'XK92LM');
+  assert.equal(p.start, '2026-10-23T02:40');
+  assert.equal(p.end, '2026-10-23T07:55');
+  assert.equal(p.guessed, undefined);
+  const noTime = parsePaste(['Booking reference: ABC123', 'Check-in 24 Oct 2026', 'Check-out 27 Oct 2026', '', '', '', 'Thanks'].join('\n'));
+  assert.deepEqual(noTime.guessed, ['start', 'end']);
+  assert.equal(noTime.start, '2026-10-24T12:00');
+});
+
+test('reading a file proposes only what is new, and keeps a title or type the person chose', () => {
+  const p = parsePaste(['Subject: Hotel Arts confirmation', 'Booking number: HAB48213', 'Check-in: 24 Oct 2026 3:00 PM',
+    'Check-out: 27 Oct 2026 11:00', 'Address: Carrer de la Marina 19'].join('\n'));
+  const blank = { type: 'flight' as const, title: '', ref: '', start: '', end: '', place: '' };
+  assert.deepEqual(diffBooking(blank, p, true).map((c) => c.field), ['type', 'title', 'ref', 'start', 'end', 'place']);
+  const saved = { type: 'hotel' as const, title: 'Our hotel', ref: 'HAB48213', start: '2026-10-24T14:00', end: '2026-10-27T11:00', place: 'Carrer de la Marina 19' };
+  const ch = diffBooking(saved, p, false);
+  assert.deepEqual(ch.map((c) => [c.field, c.from, c.to]), [['start', '2026-10-24T14:00', '2026-10-24T15:00']], 'only the changed time; title and type untouched');
+  assert.deepEqual(diffBooking({ ...saved, start: '2026-10-24T15:00' }, p, false), []);
 });
 
 test('calendar file: CRLF, flight reminders, tomorrow previews, escaping and folding', () => {

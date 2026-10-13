@@ -16,6 +16,8 @@ undo history (the last 10 versions), and a service worker for offline use.
 - **Today:** countdown, today's plan and a preview of tomorrow.
 - **Itinerary:** your own activities plus every dated booking, grouped by day. Mark it Final when planning is done.
 - **Bookings and documents:** flights, hotels, Airbnbs, car rentals, trains, tickets and visas with confirmation numbers and attached files.
+- **Add from a PDF or screenshot:** pick a ticket or confirmation and the booking is filled in for you to check. PDFs are read from their text; screenshots and photos by OCR. All on the phone.
+- **Update from a new file:** attach a changed ticket to a booking and see what differs before anything is updated.
 - **Paste a confirmation:** paste an email or booking page text and the form is filled in for you to review.
 - **Expenses:** multi-currency, optional budget, totals by category, CSV export.
 - **Calendar export:** an .ics file with reminders (flights 1 day and 3 hours before, an 8 PM "tomorrow's plan" reminder).
@@ -58,7 +60,8 @@ storage after 7 days without a visit, but not for a home-screen app. Trip Keeper
 - `src/backup.ts`: backup validation, expense CSV, snapshots; reads the first app's backup format
 - `src/crypto.ts`: passphrase encryption for backups (WebCrypto)
 - `src/ics.ts`: calendar file, share text, print page
-- `src/parse.ts`: paste-a-confirmation reader
+- `src/parse.ts`: reads booking details from text, and works out what a file would change
+- `src/reader.ts`: reads a PDF or image on the phone (pdf.js, Tesseract; copied to `public/vendor` by `scripts/vendor.mjs`)
 - `src/pin.ts`: PIN records (a screen lock, not encryption)
 - `src/legacy.ts`: reads the first app's data from this browser
 - `src/storage.ts`, `src/store.tsx`, `src/safety.ts`: IndexedDB, the write queue, undo history

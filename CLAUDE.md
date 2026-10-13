@@ -31,7 +31,10 @@ src/model.ts          Data model + every change as a pure function; itinerary, m
 src/backup.ts         parseBackup (validates untrusted/own data), serialize, CSV, reads the first app's backup
 src/crypto.ts         Passphrase encryption for backups (copied from Uplift)
 src/ics.ts            Calendar file, share text, print page
-src/parse.ts          Paste-a-confirmation heuristics
+src/parse.ts          Paste-a-confirmation heuristics + diffBooking (what a file would change)
+src/reader.ts         Reads a PDF (text layer) or image (OCR) on the phone, from self-hosted files
+src/handoff.ts        Passes picked files from the Bookings tab to the booking form
+scripts/vendor.mjs    Copies pdf.js and Tesseract into public/vendor (generated, not committed)
 src/pin.ts            PIN record hashing (screen lock, not encryption)
 src/legacy.ts         Reads the first app's IndexedDB ("tripkeeper") for a one-time move
 src/countries.ts      Country quick facts table
@@ -61,6 +64,7 @@ tests/core.test.ts    Unit tests for the pure modules
 - Dates are local `YYYY-MM-DD`; times `HH:MM`; booking start/end `YYYY-MM-DDTHH:MM`. Use `today()`, `addDays()`, `diffDays()`.
 - Money: each expense stores amount + currency. `trip.home` is the home currency (default INR); `trip.rates[CUR]` is one global rate per currency. Expenses with no rate are left out of totals and flagged.
 - The PIN is a screen lock, not encryption. Do not describe it as encryption. It lives outside the log (`pin:v1`) so restoring a backup does not change it.
+- Reading files: `reader.ts` loads pdf.js and Tesseract as classic scripts from `public/vendor` (never a CDN, never the bundler). Nothing about a file leaves the phone. A read only ever fills the form after the person confirms (`diffBooking` lists what changes); a time that wasn't found is set to noon and flagged. OCR data is fetched on first use and then cached by the service worker.
 - Share text and the print page must not include booking reference numbers.
 - Calendar file: floating local times, reminders (flights 1 day and 3 hours, others 1 hour), optional 8 PM "tomorrow's plan" event, lines folded at 75 octets.
 

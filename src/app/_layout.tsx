@@ -3,6 +3,7 @@ import { ActivityIndicator, View } from 'react-native';
 import { Stack } from 'expo-router';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useStore, StoreProvider, useTheme } from '../store';
+import '../pwa'; // registers the service worker
 import { today } from '../model';
 import { confirm, notify, saveFile } from '../io';
 import { LockScreen } from '../components';

@@ -7,6 +7,11 @@ export interface Change { kind: ChangeKind; icon: keyof typeof Ionicons.glyphMap
 export interface Release { date: string; title: string; changes: Change[] }
 
 export const RELEASES: Release[] = [
+  { date: '2026-10-13', title: 'Add a booking from a file', changes: [
+    { kind: 'new', icon: 'document-attach-outline', title: 'Add from a PDF or screenshot', text: 'Pick a ticket or confirmation and the booking is filled in for you to check: type, reference, dates, times and place.' },
+    { kind: 'new', icon: 'refresh-outline', title: 'Update from a new file', text: 'Attach a changed ticket to a booking and see what differs before anything is updated.' },
+    { kind: 'better', icon: 'shield-checkmark-outline', title: 'Read on your phone', text: 'Files are read on this phone and are never sent anywhere. The first screenshot read needs internet once, to get the text reader.' },
+  ] },
   { date: '2026-10-12', title: 'A rebuilt Trip Keeper', changes: [
     { kind: 'new', icon: 'time-outline', title: 'Undo history', text: 'Trip Keeper keeps your last 10 versions on this phone: one at the start of each day you make changes, and one before every restore or erase.' },
     { kind: 'new', icon: 'lock-closed-outline', title: 'Locked backups', text: 'Save a backup with a passphrase. It is locked on your phone before it goes to Drive, iCloud or email.' },
