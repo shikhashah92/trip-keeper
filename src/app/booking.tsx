@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
-import { useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useLog, useTheme } from '../store';
 import { BOOKING_TYPE, BOOKING_TYPES, delAttachment, delBooking, filesOf, newId, putBooking, type BookingType } from '../model';
 import { diffBooking, parsePaste, type Change, type Current, type Parsed } from '../parse';
 import { canRead, readFileText } from '../reader';
-import { clearHandOff, peekHandOff } from '../handoff';
-import { confirm, notify, openAttachment, pickFiles, type Picked } from '../io';
+import { clearHandOff, peekHandOff, setViewing } from '../handoff';
+import { confirm, notify, pickFiles, type Picked } from '../io';
 import { goBack } from '../components';
 import { DateTimeField } from '../DateField';
 import { Button, Card, Chip, Field, Gap, Header, IconButton, Row, Screen, T } from '../ui';
@@ -38,6 +38,7 @@ export default function BookingScreen() {
   const [removed, setRemoved] = useState<string[]>([]);
   const [added, setAdded] = useState<Picked[]>(() => peekHandOff()); // from "Add from a PDF or screenshot"
   const [reading, setReading] = useState<string | null>(null);
+  const [lastRead, setLastRead] = useState(''); // the text found in the last file, so a wrong reading can be looked into
   const kept = old ? filesOf(log, old.id).filter((a) => !removed.includes(a.id)) : [];
 
   // What the form holds now, for a file that finishes reading a few seconds from now.
@@ -50,7 +51,9 @@ export default function BookingScreen() {
     if (!f) return; // a Word file and the like: attached, but there is nothing to read
     setReading(`Reading “${f.name}”…`);
     try {
-      const p = parsePaste(await readFileText(f, (m) => setReading(m)));
+      const text = await readFileText(f, (m) => setReading(m));
+      setLastRead(text);
+      const p = parsePaste(text);
       const changes = diffBooking(now.current, p, !old);
       if (!changes.length) return notify('Nothing to fill in', `“${f.name}” was read, but it didn’t give anything new for this booking.`);
       const lines = changes.map((ch) => `${LABEL[ch.field]}: ${ch.from ? `${show(ch.field, ch.from)} → ` : ''}${show(ch.field, ch.to)}${ch.guessed ? ' (time not found, please check)' : ''}`);
@@ -89,10 +92,19 @@ export default function BookingScreen() {
       readFrom(picked);
     } catch (e) { notify('Could not attach', (e as Error).message); }
   }
+  /** Show a file inside the app: a new browser tab is blocked or missing in an installed phone app. */
+  function view(f: Picked) {
+    setViewing(f);
+    router.push('/file');
+  }
   async function open(fileId: string, name: string, mime: string) {
     const data = await readFile(fileId);
     if (!data) return notify('That file is no longer on this phone', `“${name}” can’t be found. Restore a backup that has it, or attach it again.`);
-    openAttachment(data, mime);
+    view({ name, type: mime, data });
+  }
+  async function copyRead() {
+    try { await navigator.clipboard.writeText(lastRead); notify('Copied', 'The text found in the file is on your clipboard.'); }
+    catch { notify('Could not copy', 'Your browser did not allow it.'); }
   }
   function save() {
     if (reading) return notify('Still reading the file', 'This takes a few seconds. Save when it finishes.');
@@ -154,7 +166,7 @@ export default function BookingScreen() {
               actions={<IconButton icon="close-circle-outline" label={`Remove ${a.name}`} onPress={() => setRemoved((r) => [...r, a.id])} />} />
           ))}
           {added.map((f, i) => (
-            <Row key={`${f.name}${i}`} last={i === added.length - 1} title={f.name} subtitle="Will be added when you save"
+            <Row key={`${f.name}${i}`} last={i === added.length - 1} title={f.name} subtitle="Will be added when you save" onPress={() => view(f)}
               left={<Ionicons name="add-circle-outline" size={22} color={c.accent} />}
               actions={<IconButton icon="close-circle-outline" label={`Remove ${f.name}`} onPress={() => setAdded((a) => a.filter((_, j) => j !== i))} />} />
           ))}
@@ -163,6 +175,7 @@ export default function BookingScreen() {
       <Gap h={space.sm} />
       <Button title="Attach files" icon="attach" kind="secondary" onPress={attach} disabled={!!reading} />
       <T v="small" style={{ marginTop: space.sm }}>A PDF or screenshot is read on this phone to fill in the details. It is not sent anywhere.</T>
+      {lastRead ? <><Gap h={space.sm} /><Button title="Copy the text that was read" kind="ghost" icon="copy-outline" onPress={copyRead} /></> : null}
       <Gap h={24} />
       <Button title="Save" onPress={save} disabled={!!reading} />
       {old ? <><Gap h={12} /><Button title="Delete booking" kind="danger" onPress={remove} /></> : null}

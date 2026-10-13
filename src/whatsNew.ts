@@ -10,6 +10,8 @@ export const RELEASES: Release[] = [
   { date: '2026-10-13', title: 'Add a booking from a file', changes: [
     { kind: 'new', icon: 'document-attach-outline', title: 'Add from a PDF or screenshot', text: 'Pick a ticket or confirmation and the booking is filled in for you to check: type, reference, dates, times and place.' },
     { kind: 'new', icon: 'refresh-outline', title: 'Update from a new file', text: 'Attach a changed ticket to a booking and see what differs before anything is updated.' },
+    { kind: 'fixed', icon: 'time-outline', title: 'Flight and activity times', text: 'Arrival times, boarding and gate times, a ticket’s booking date, ‘10 AM’, time ranges and durations are now read the way they are written.' },
+    { kind: 'new', icon: 'eye-outline', title: 'Open files inside the app', text: 'Tap a ticket or voucher to see it in the app. It no longer needs a new browser tab.' },
     { kind: 'better', icon: 'albums-outline', title: 'Bookings in sections', text: 'Flights, stays, cars and trains, activities, and insurance and visas each get their own section, and a stay shows its nights.' },
     { kind: 'better', icon: 'sparkles-outline', title: 'Smarter at telling them apart', text: 'A file is sorted as a flight, stay, car, train, activity or insurance from what it says, not just the first word it finds.' },
     { kind: 'better', icon: 'shield-checkmark-outline', title: 'Read on your phone', text: 'Files are read on this phone and are never sent anywhere. The first screenshot read needs internet once, to get the text reader.' },

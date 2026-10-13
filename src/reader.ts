@@ -82,25 +82,71 @@ async function ocr(images: HTMLCanvasElement[], progress: Progress): Promise<str
   }
 }
 
-/** The text of a PDF, line by line, from its own text layer; scanned pages fall back to OCR. */
-async function pdfText(f: Source, progress: Progress): Promise<string> {
+/**
+ * Text pieces of one page as lines, the way the page looks: top to bottom, left to right. A PDF stores its text in the
+ * order it was drawn, and a table is often drawn a column at a time, so reading it in that order separates a label from
+ * its value ("Departure" ... a page later ... "07 Nov 06:15"). Pieces whose baselines are within a few points share a line.
+ */
+function linesOf(items: { str: string; transform: number[]; width?: number }[]): string {
+  const pieces = items.filter((it) => it.str.trim()).map((it) => ({ s: it.str, x: it.transform[4], y: it.transform[5], w: it.width ?? 0 }));
+  pieces.sort((a, b) => b.y - a.y || a.x - b.x);
+  const rows: { y: number; list: typeof pieces }[] = [];
+  for (const p of pieces) {
+    const row = rows.find((r) => Math.abs(r.y - p.y) <= 3);
+    if (row) row.list.push(p); else rows.push({ y: p.y, list: [p] });
+  }
+  rows.sort((a, b) => b.y - a.y);
+  return rows.map((r) => {
+    r.list.sort((a, b) => a.x - b.x);
+    let line = '';
+    let end = -Infinity;
+    for (const p of r.list) {
+      line += (line && p.x - end > 1 ? (p.x - end > 12 ? '  ' : ' ') : '') + p.s;
+      end = p.x + p.w;
+    }
+    return line;
+  }).join('\n');
+}
+
+async function openPdf(f: Source) {
   await loadScript(abs('vendor/pdf/pdf.min.js'));
   const pdfjs = w.pdfjsLib;
   pdfjs.GlobalWorkerOptions.workerSrc = abs('vendor/pdf/pdf.worker.min.js');
-  let doc;
   try {
-    doc = await pdfjs.getDocument({ data: bytesOf(f.data), isEvalSupported: false }).promise;
+    return await pdfjs.getDocument({ data: bytesOf(f.data), isEvalSupported: false }).promise;
   } catch (e) {
     const name = (e as { name?: string }).name;
     throw new Error(name === 'PasswordException' ? 'This PDF is password protected.' : 'This PDF could not be opened.');
   }
+}
+
+/** Draw every page of a PDF into `el`, as wide as it is. This is the in-app viewer: no new tab, no plugin, works offline. */
+export async function renderPdfInto(f: Source, el: HTMLElement, progress: Progress = () => {}): Promise<void> {
+  const doc = await openPdf(f);
+  const width = Math.max(280, el.clientWidth || 360);
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  for (let n = 1; n <= Math.min(doc.numPages, 40); n++) {
+    progress(doc.numPages > 1 ? `Page ${n} of ${doc.numPages}` : '');
+    const page = await doc.getPage(n);
+    const base = page.getViewport({ scale: 1 });
+    const view = page.getViewport({ scale: (width / base.width) * dpr });
+    const c = document.createElement('canvas');
+    c.width = Math.round(view.width);
+    c.height = Math.round(view.height);
+    c.style.cssText = 'width:100%;height:auto;display:block;margin-bottom:12px;background:#fff;border-radius:6px';
+    await page.render({ canvasContext: c.getContext('2d')!, viewport: view }).promise;
+    el.appendChild(c);
+  }
+}
+
+/** The text of a PDF, line by line, from its own text layer; scanned pages fall back to OCR. */
+async function pdfText(f: Source, progress: Progress): Promise<string> {
+  const doc = await openPdf(f);
   const pages = Math.min(doc.numPages, 10);
   let text = '';
   for (let n = 1; n <= pages; n++) {
     progress(pages > 1 ? `Reading page ${n} of ${pages}…` : 'Reading…');
-    const content = await (await doc.getPage(n)).getTextContent();
-    for (const it of content.items) text += it.str + (it.hasEOL ? '\n' : ' ');
-    text += '\n';
+    text += `${linesOf((await (await doc.getPage(n)).getTextContent()).items)}\n`;
   }
   if (text.replace(/\s/g, '').length >= 40) return text;
 

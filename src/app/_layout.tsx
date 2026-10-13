@@ -53,6 +53,7 @@ function Root() {
           <Stack.Screen name="item" options={modal} />
           <Stack.Screen name="booking" options={modal} />
           <Stack.Screen name="paste" options={modal} />
+          <Stack.Screen name="file" options={modal} />
           <Stack.Screen name="expense" options={modal} />
           <Stack.Screen name="expense-settings" options={modal} />
           <Stack.Screen name="calendar" options={modal} />

@@ -74,26 +74,6 @@ export function pickFiles(accept = 'application/pdf,image/*,.pdf,.doc,.docx'): P
   });
 }
 
-function toBlob(dataUrl: string, type: string): Blob {
-  const bin = atob(dataUrl.slice(dataUrl.indexOf(',') + 1)); // not fetch(): the page's content policy only allows its own origin
-  const u8 = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
-  return new Blob([u8], { type });
-}
-
-/** Open an attached file in its own tab (the phone's PDF or image viewer). */
-export function openAttachment(dataUrl: string, type: string) {
-  const url = URL.createObjectURL(toBlob(dataUrl, type));
-  const a = document.createElement('a');
-  a.href = url;
-  a.target = '_blank';
-  a.rel = 'noopener';
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 60_000);
-}
-
 /** Print, or "Save as PDF" in the print dialog. Must be called straight from a tap: browsers block a window opened later. */
 export function printHtml(html: string): boolean {
   const w = window.open('', '_blank');

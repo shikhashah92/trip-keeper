@@ -149,6 +149,48 @@ test('the Bookings tab sorts into sections, with nights for a stay', () => {
   assert.deepEqual(groupBookings(newLog(0)), []);
 });
 
+test('flight times: a table of two dates over two times, boarding ignored, a booking date skipped, overnight arrival', () => {
+  const doc = (...lines: string[]) => lines.join('\n');
+  // dates on one line, times on the next: the arrival must not reuse the departure time
+  const table = parsePaste(doc('IndiGo e-ticket', 'PNR: QW84ZX', 'Departure  Arrival', 'Sat, 07 Nov 2026  Sat, 07 Nov 2026', '06:15  08:20', 'Mumbai (BOM)  Bengaluru (BLR)'));
+  assert.equal(table.start, '2026-11-07T06:15');
+  assert.equal(table.end, '2026-11-07T08:20');
+  assert.equal(table.guessed, undefined);
+  // boarding and gate times come before the departure and are not it
+  const boarding = parsePaste(doc('PNR: ZZ99QQ', 'Flight 6E 521', 'Date: 07 Nov 2026', 'Boarding 05:45  Gate closes 06:00', 'Departure 06:15', 'Arrival 08:20'));
+  assert.equal(boarding.start, '2026-11-07T06:15');
+  assert.equal(boarding.end, '2026-11-07T08:20');
+  // the day the ticket was booked is not the day of travel
+  const booked = parsePaste(doc('PNR: ZZ99QQ', 'Booked on 01 Oct 2026', 'Departure: 07 Nov 2026 06:15', 'Arrival: 07 Nov 2026 08:20'));
+  assert.equal(booked.start, '2026-11-07T06:15');
+  // one date over two times; the arrival is earlier on the clock, so it is the next day
+  const night = parsePaste(doc('PNR: ZZ99QQ', 'Flight AI 131', 'Date: 07 Nov 2026', 'Dep 23:30 Mumbai (BOM)', 'Arr 01:45 London (LHR)'));
+  assert.equal(night.start, '2026-11-07T23:30');
+  assert.equal(night.end, '2026-11-08T01:45');
+  // 12-hour times and a date written 07NOV26
+  const ampm = parsePaste(doc('PNR: ZZ99QQ', 'Departs 07NOV26 6:15 PM', 'Arrives 07NOV26 8:20 PM'));
+  assert.equal(ampm.start, '2026-11-07T18:15');
+  assert.equal(ampm.end, '2026-11-07T20:20');
+  assert.equal(parsePaste(doc('PNR: ZZ99QQ', 'Flight 6E 521', 'Mumbai (BOM) to Bengaluru (BLR)')).title, '6E 521 BOM → BLR');
+});
+
+test('activity times: a range, "10 AM", a duration, and doors-open is not the start', () => {
+  const doc = (...lines: string[]) => lines.join('\n');
+  const range = parsePaste(doc('Sagrada Familia guided tour', 'Booking reference: ACT12345', 'Date: 25 Oct 2026', 'Time: 10:00 - 12:30', 'Doors open 09:30'));
+  assert.equal(range.type, 'activity');
+  assert.equal(range.start, '2026-10-25T10:00');
+  assert.equal(range.end, '2026-10-25T12:30');
+  const doors = parsePaste(doc('Museum entry ticket', 'Sat 7 Nov 2026', 'Doors open 09:00', 'Entry slot 10:30'));
+  assert.equal(doors.start, '2026-11-07T10:30');
+  const noMinutes = parsePaste(doc('Museum entry ticket', 'Sat 7 Nov 2026', 'Entry at 10 AM'));
+  assert.equal(noMinutes.start, '2026-11-07T10:00');
+  assert.equal(noMinutes.guessed, undefined);
+  const dur = parsePaste(doc('Cooking class voucher', '25 Oct 2026 14:00', 'Duration: 2 hours'));
+  assert.equal(dur.start, '2026-10-25T14:00');
+  assert.equal(dur.end, '2026-10-25T16:00');
+  assert.equal(parsePaste(doc('City tour', 'from 9 AM to 12 PM', '25 Oct 2026')).start, '2026-10-25T09:00');
+});
+
 test('calendar file: CRLF, flight reminders, tomorrow previews, escaping and folding', () => {
   const ics = buildIcs(sample(), true, '2026-10-20', NOW);
   assert.ok(ics.includes('\r\n') && !/[^\r]\n/.test(ics));
